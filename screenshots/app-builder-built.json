@@ -1,0 +1,38 @@
+{
+  "url": "http://127.0.0.1:8081/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "Viceroy",
+      "hasCanvas": true,
+      "bodyTextLen": 512,
+      "bodyTextHash": "9907969b937fb7d3718e450a8d538acb9185c41bf05793b98c840919c19e58e9",
+      "bodyTextPrefix": "OPEN CITY VICEROY Wallet is what the street can take. The bank k",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "Viceroy",
+      "hasCanvas": true,
+      "bodyTextLen": 483,
+      "bodyTextHash": "08d135f798e661c68c09ad7b2fc7fde1e80e685749536265559aecf19d2d40b3",
+      "bodyTextPrefix": "OPEN CITY VICEROY Wallet is what the street can take. The bank k",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-built.json",
+  "divergesFromBaseline": false,
+  "baselineReasons": []
+}

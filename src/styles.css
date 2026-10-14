@@ -1,0 +1,84 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Teko", "Arial Narrow", Impact, sans-serif;
+  --font-sans: "Outfit", "Avenir Next", "Segoe UI", sans-serif;
+  --color-bg: #07080c;
+  --color-surface: #14171f;
+  --color-fg: #f3efe4;
+  --color-muted: #a39e92;
+  --color-amber: #ffb020;
+  --color-blood: #e23b3b;
+  --color-line: #2a2e38;
+  --radius: 2px;
+}
+
+@layer base {
+  html,
+  body {
+    height: 100%;
+    background: var(--color-bg);
+    color: var(--color-fg);
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  #root,
+  body {
+    margin: 0;
+  }
+}
+
+@keyframes heat-pulse {
+  0%,
+  100% {
+    box-shadow: inset 0 0 110px color-mix(in srgb, var(--color-blood) 42%, transparent);
+  }
+  50% {
+    box-shadow: inset 0 0 70px color-mix(in srgb, var(--color-amber) 22%, transparent);
+  }
+}
+
+@utility heat-vignette {
+  animation: heat-pulse 0.7s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .heat-vignette {
+    animation: none;
+    box-shadow: inset 0 0 90px color-mix(in srgb, var(--color-blood) 35%, transparent);
+  }
+}
+
+.night-grade {
+  box-shadow: inset 0 0 120px color-mix(in srgb, var(--color-bg) 72%, transparent);
+}
+
+.safe-b {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+.scrim-bottom {
+  background: linear-gradient(
+    to top,
+    var(--color-bg) 0%,
+    color-mix(in srgb, var(--color-bg) 82%, transparent) 38%,
+    color-mix(in srgb, var(--color-bg) 28%, transparent) 68%,
+    transparent 100%
+  );
+}
+
+.hud-chip {
+  background: color-mix(in srgb, var(--color-bg) 72%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-amber) 45%, transparent);
+}
+
+.mini-frame {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--color-amber) 75%, transparent),
+    0 0 24px color-mix(in srgb, var(--color-amber) 18%, transparent);
+}
+

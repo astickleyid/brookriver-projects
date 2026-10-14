@@ -1,0 +1,64 @@
+{
+  "target": "asset",
+  "mode": "sheet",
+  "prompt": "",
+  "role": "",
+  "input": "/tmp/sprite-raw/pistol.png",
+  "threshold": 80,
+  "edge_threshold": 150,
+  "duration": 200,
+  "rows": 1,
+  "cols": 1,
+  "cell_size": 128,
+  "fit_scale": 0.9,
+  "trim_border": 4,
+  "edge_clean_depth": 3,
+  "align": "center",
+  "shared_scale": false,
+  "component_mode": "largest",
+  "component_padding": 0,
+  "min_component_area": 1,
+  "edge_touch_margin": 0,
+  "frame_labels": [
+    "sheet-1"
+  ],
+  "frames": [
+    {
+      "grid": [
+        0,
+        0
+      ],
+      "source_box": [
+        0,
+        0,
+        1408,
+        1408
+      ],
+      "component_mode": "largest",
+      "component_count": 1,
+      "selected_component_area": 229827,
+      "selected_component_bbox": [
+        327,
+        404,
+        1110,
+        990
+      ],
+      "crop_bbox": [
+        327,
+        404,
+        1110,
+        990
+      ],
+      "edge_touch": false,
+      "output_size": [
+        115,
+        86
+      ],
+      "paste_position": [
+        6,
+        21
+      ]
+    }
+  ],
+  "edge_touch_frames": []
+}

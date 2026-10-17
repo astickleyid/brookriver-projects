@@ -4,6 +4,7 @@ import { styleArcadeCharacter } from "./arcade-style.ts";
 import { isolateHead } from "./roster-model.ts";
 import { characterProfile, dressCharacter, type CharacterProfile } from "./wardrobe.ts";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { clone as cloneSkinned } from "three/addons/utils/SkeletonUtils.js";
 
 /**
@@ -427,6 +428,7 @@ export function gunFor(faction: string, index: number): HeldGun | null {
 export type CastLibrary = {
   prototypes: Map<string, THREE.Object3D>;
   clips: Map<string, THREE.AnimationClip>;
+  nativeClips: Map<string, Map<string, THREE.AnimationClip>>;
   guns: Record<HeldGun, THREE.Group>;
   sources: THREE.Object3D[];
 };
@@ -774,8 +776,8 @@ export function createActor(lib: CastLibrary, key: string, gun: HeldGun | "all" 
   const rig = cloneSkinned(proto) as THREE.Object3D;
   const hero = PLAYABLES.find((p) => key === `player-${p.id}`);
   const profile = hero ? playableProfile(hero) : characterProfile(key, residentIndex);
-  if (hero) styleArcadeCharacter(rig, hero);
-  else dressCharacter(rig, profile);
+  if (hero && !hero.nativeCharacter) styleArcadeCharacter(rig, hero);
+  else if (!hero) dressCharacter(rig, profile);
   lib.sources.push(rig);
   const mount = new THREE.Group();
   mount.name = "mount";
@@ -785,16 +787,20 @@ export function createActor(lib: CastLibrary, key: string, gun: HeldGun | "all" 
   root.name = key;
   root.add(mount);
   const appearance = appearanceFor(key);
-  root.scale.set(appearance.width * profile.build, appearance.height * profile.height, appearance.width * profile.build);
+  // Authored source bodies keep their proportions; wardrobe scaling belongs to the legacy cast.
+  if (!hero?.nativeCharacter)
+    root.scale.set(appearance.width * profile.build, appearance.height * profile.height, appearance.width * profile.build);
   root.userData.character = profile;
   const mixer = new THREE.AnimationMixer(rig);
   const actions = new Map<string, THREE.AnimationAction>();
-  for (const [name, clip] of lib.clips) actions.set(name, mixer.clipAction(clip));
+  for (const [name, clip] of lib.nativeClips.get(key) ?? lib.clips) actions.set(name, mixer.clipAction(clip));
   const hand = rig.getObjectByName("hand_r") ?? rig.getObjectByName("Wrist.R");
   let kick: THREE.Group | null = null;
   if (hand && gun) {
     const grip = new THREE.Group();
     grip.quaternion.copy(gunGripQuaternion());
+    const basis = rig.userData.brookriver?.gripBasis as number[] | undefined;
+    if (basis) grip.quaternion.premultiply(new THREE.Quaternion().fromArray(basis));
     grip.position.set(0, 0.02, 0);
     kick = new THREE.Group();
     grip.add(kick);
@@ -942,7 +948,7 @@ export function disposeCast(lib: CastLibrary) {
 }
 
 export async function loadCast(): Promise<CastLibrary> {
-  const loader = new GLTFLoader();
+  const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
   const load = async (url: string) => (await loader.loadAsync(url)) as Gltf;
   const hairFile: Record<string, string> = {
     parted: "parted/Hair_SimpleParted.gltf",
@@ -986,6 +992,7 @@ export async function loadCast(): Promise<CastLibrary> {
   });
   const bodies = { m: male, f: female };
   const prototypes = new Map<string, THREE.Object3D>();
+  const nativeClips = new Map<string, Map<string, THREE.AnimationClip>>();
   const heroModels = PLAYABLES.map(
     (_, i) => rest[cursor + Object.keys(hairFile).length + i] as Gltf,
   );
@@ -994,6 +1001,16 @@ export async function loadCast(): Promise<CastLibrary> {
     if (heroIndex >= 0) {
       const rig = cloneSkinned(heroModels[heroIndex]!.scene) as THREE.Object3D;
       rig.name = spec.key;
+      const nativeHero = PLAYABLES[heroIndex]!;
+      if (nativeHero.nativeCharacter) {
+        const clips = new Map(heroModels[heroIndex]!.animations.map(clip => [clip.name, clip]));
+        for (const name of CLIP_NAMES) if (!clips.has(name)) throw new Error(`${nativeHero.id} missing native clip ${name}`);
+        addGunClips(clips);
+        nativeClips.set(spec.key, clips);
+        rig.traverse(o => { const mesh = o as THREE.Mesh; if (mesh.isMesh) mesh.frustumCulled = false; });
+        prototypes.set(spec.key, rig);
+        continue;
+      }
       const hero = PLAYABLES[heroIndex]!,
         headRig = cloneSkinned(bodies[spec.sex].scene) as THREE.Object3D;
       headRig.traverse((o) => {
@@ -1093,6 +1110,7 @@ export async function loadCast(): Promise<CastLibrary> {
   return {
     prototypes,
     clips,
+    nativeClips,
     guns: {
       pistol: takeGun(pistol.scene, "pistol"),
       shotgun: takeGun(shotgun.scene, "shotgun"),

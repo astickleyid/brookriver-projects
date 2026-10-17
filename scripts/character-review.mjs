@@ -26,6 +26,9 @@ const watch = (p) => {
   });
 };
 watch(page);
+// Physical controllers on the host must not interfere with deterministic keyboard QA.
+// The controller scenario below supplies its own explicit test pad.
+await page.addInitScript(() => Object.defineProperty(navigator, "getGamepads", { configurable: true, value: () => [] }));
 page.on("framenavigated", (frame) => {
   if (frame === page.mainFrame()) console.log("Navigated", frame.url());
 });
@@ -165,6 +168,7 @@ try {
     hasTouch: true,
   });
   watch(mobile);
+  await mobile.addInitScript(() => Object.defineProperty(navigator, "getGamepads", { configurable: true, value: () => [] }));
   await mobile.goto(url, { waitUntil: "domcontentloaded" });
   await ready(mobile);
   await mobile.getByRole("button", { name: "Choose Imani Okafor", exact: true }).click();

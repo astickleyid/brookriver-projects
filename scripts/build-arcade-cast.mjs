@@ -139,6 +139,10 @@ function mapped(name) {
 }
 const manifest = [];
 for (const hero of PLAYABLES) {
+  if (hero.nativeCharacter) {
+    manifest.push(JSON.parse(fs.readFileSync("public/models/sourced/manifest.json", "utf8")));
+    continue;
+  }
   const t = target(hero.sex),
     src = read(`${root}/${hero.source}.gltf`),
     skin = src.json.skins[0],
@@ -415,7 +419,7 @@ fs.writeFileSync(
   JSON.stringify(
     {
       license:
-        "CC0 / Quaternius Ultimate Modular Men and Women; Universal Base Characters skeleton",
+        "CC0 / Quaternius and THEUNSEENVULGA; individual sources recorded per character",
       pipeline: "scripts/build-arcade-cast.mjs",
       characters: manifest,
     },

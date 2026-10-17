@@ -118,6 +118,7 @@ describe("playable arcade cast", () => {
     const manifest = JSON.parse(readFileSync("public/models/cast/manifest.json", "utf8"));
     assert.equal(manifest.characters.length, 9);
     for (const hero of PLAYABLES) {
+      if (hero.nativeCharacter) continue;
       const { json, values } = glb(`public${hero.asset}`),
         skin = json.skins[0],
         names = skin.joints.map((i: number) => json.nodes[i].name);
@@ -157,6 +158,7 @@ describe("playable arcade cast", () => {
   });
   it("keeps bind bone rotations identical to the source animation rig", () => {
     for (const hero of PLAYABLES) {
+      if (hero.nativeCharacter) continue;
       const { json } = glb(`public${hero.asset}`),
         file = hero.sex === "m" ? "male/Superhero_Male" : "female/Superhero_Female";
       const original = JSON.parse(
@@ -171,5 +173,25 @@ describe("playable arcade cast", () => {
         assert.deepEqual(actual.rotation, expected.rotation, `${hero.id}: ${name}`);
       }
     }
+  });
+  it("ships the complete credited source character with its own rig, textures and gameplay clips", () => {
+    const hero = playableById("briggs");
+    assert.equal(hero.nativeCharacter, true);
+    const { json } = glb(`public${hero.asset}`);
+    assert.match(json.asset.copyright, /THEUNSEENVULGA/);
+    assert.equal(json.asset.extras.license, "CC0-1.0");
+    assert.equal(json.scenes[0].extras.brookriver.nativeCharacter, true);
+    assert.equal(json.scenes[0].extras.brookriver.gripBasis.length, 4);
+    for (const name of ["Head", "pelvis", "spine_03", "hand_r", "foot_l"])
+      assert.ok(json.skins[0].joints.some((i: number) => json.nodes[i].name === name));
+    for (const name of ["Idle_Loop", "Walk_Loop", "Sprint_Loop", "Jump_Start", "Jump_Land", "Punch_Jab", "Punch_Cross", "Pistol_Shoot", "Pistol_Reload"])
+      assert.ok(json.animations.some((a: { name: string; channels: unknown[] }) => a.name === name && a.channels.length > 40), name);
+    for (const name of ["hair", "beard", "eyes", "jacket", "pants", "boots"])
+      assert.ok(json.nodes.some((n: { name: string }) => n.name.startsWith(name)), name);
+    assert.ok(json.images.length >= 3);
+    assert.ok(json.images.every((i: { mimeType: string }) => i.mimeType === "image/webp"));
+    assert.ok(json.extensionsRequired.includes("EXT_meshopt_compression"));
+    assert.ok(readFileSync(`public${hero.asset}`).length < 1_500_000);
+    assert.match(readFileSync("public/models/sourced/ATTRIBUTION.md", "utf8"), /CC0-1.0/);
   });
 });

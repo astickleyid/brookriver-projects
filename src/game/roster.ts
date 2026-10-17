@@ -13,6 +13,8 @@ export type PlayableCharacter = {
   skinColor: number;
   source: string;
   asset: string;
+  /** Complete sourced character: retain its head, clothing, textures and native bind pose. */
+  nativeCharacter?: boolean;
   previewPose?: "folded";
   body: string;
   fashion: string;
@@ -106,7 +108,6 @@ export const PLAYABLES: readonly PlayableCharacter[] = [
   },
   {
     id: "briggs",
-    previewPose: "folded",
     name: "Axel Briggs",
     brand: "HEAVY HITTER",
     tagline: "Big swing. Bigger grin.",
@@ -116,11 +117,12 @@ export const PLAYABLES: readonly PlayableCharacter[] = [
     hairTint: 0x3b2a22,
     skin: [1.08, 0.98, 0.9],
     skinColor: 0xe1b296,
-    source: "ultimate-modular-men/Punk",
-    asset: "/models/cast/briggs.glb",
-    body: "Broad · muscular · thick neck · tapered waist",
+    source: "THEUNSEENVULGA/Diesel (CC0)",
+    asset: "/models/sourced/diesel.glb",
+    nativeCharacter: true,
+    body: "Solid build · modeled face · swept auburn hair and goatee",
     fashion:
-      "Cut-off charcoal vest, amber tank, torn indigo denim, wrist wraps, dark crest and steel-toe sneakers.",
+      "Hand-painted brown leather jacket, dark shirt, worn denim and heavy leather boots.",
     personality:
       "Loud, magnetic, protective. Laughs first, competes hard, takes losing personally.",
     story:
@@ -137,7 +139,7 @@ export const PLAYABLES: readonly PlayableCharacter[] = [
       trousers: 0x304050,
       accent: 0xe3ddc8,
       accessories: [],
-      idle: "talk",
+      idle: "idle",
       gait: 0.96,
       height: 1.07,
       build: 1.09,

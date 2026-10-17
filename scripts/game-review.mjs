@@ -19,6 +19,7 @@ const page = await browser.newPage({
   viewport: { width: 1280, height: 800 },
 });
 const errors = [];
+await page.addInitScript(() => Object.defineProperty(navigator, "getGamepads", { configurable: true, value: () => [] }));
 page.on("pageerror", (e) => errors.push(e.message));
 page.on("console", (m) => {
   if (m.type() === "error") errors.push(m.text());
@@ -36,6 +37,8 @@ async function boot() {
     null,
     { timeout: 90000 },
   );
+  if (process.env.REVIEW_CHARACTER)
+    await page.getByRole("button", { name: `Choose ${process.env.REVIEW_CHARACTER}`, exact: true }).click();
   await page.getByRole("button", { name: "Start", exact: true }).click();
   await keys([]);
   await advance(20);
@@ -145,9 +148,12 @@ try {
     extraHTTPHeaders: { "Accept-Encoding": "gzip" },
     viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true,
   });
+  await mobile.addInitScript(() => Object.defineProperty(navigator, "getGamepads", { configurable: true, value: () => [] }));
   mobile.on("pageerror", (e) => errors.push(e.message));
   await mobile.goto(url, { waitUntil: "domcontentloaded" });
   await mobile.waitForFunction(() => window.render_game_to_text && Object.values(JSON.parse(window.render_game_to_text()).ready).every(Boolean), null, { timeout: 90000 });
+  if (process.env.REVIEW_CHARACTER)
+    await mobile.getByRole("button", { name: `Choose ${process.env.REVIEW_CHARACTER}`, exact: true }).click();
   await mobile.getByRole("button", { name: "Start", exact: true }).click();
   await mobile.evaluate(() => window.advanceTime(1000));
   assert.equal(await mobile.getByLabel("Move", { exact: true }).count(), 1);

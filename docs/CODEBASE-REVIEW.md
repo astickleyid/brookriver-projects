@@ -34,6 +34,7 @@ The largest maintenance problem is the game orchestrator: more than 8,000 lines 
 - **Floating bases:** flat building bases over changing terrain now have foundations beneath them.
 - **Outer roads blocked:** the old player clamp was at ±121 m while the outer roads were centered at ±125 m. The full outer roadway is now usable, with visible perimeter parapets explaining the limit at ±134 m.
 - **Incoherent plaza scale:** the miniature decorative building cluster was removed. A clearer paved square, fountain and existing street furniture remain.
+- Shared image/file caching avoids fetching and decoding the same city atlases independently for every glTF during startup.
 - Night fill was adjusted to improve character and street readability while preserving the existing night palette.
 
 This fixes the structural mismatch between visible buildings and the playable map. It does not turn the existing regular grid into a wholly authored new city. The district still uses only three building models and repeated assets.

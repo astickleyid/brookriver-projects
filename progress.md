@@ -16,3 +16,6 @@ Original prompt: Examine Brookriver completely and improve overall visuals, anim
 - Development and built desktop/mobile render checks pass with no overflow. Added explicit full-game readiness and touch-device emulation to the smoke harness to avoid accepting the loading screen as the completed scene.
 - Remaining artistic work and device-specific limitations are listed in docs/CODEBASE-REVIEW.md. This is a review candidate; no public release or final visual acceptance is claimed.
 - Follow-up from touch-device capture: compacted the touch radio list to its active station and removed the idle controller footer over touch controls, preventing minimap/control overlap. Typecheck and production rebuild pass; targeted final mobile capture verifies the layout.
+
+- Investigated cold production startup with network evidence: many glTF files requested/decoded identical city texture atlases independently. Enabled shared Three.js image/file caching for the game lifetime (restored and cleared on disposal); targeted fresh-load verification follows.
+- Fresh production mobile load now passes with city, cast, fleet and renderer ready; Move/Look touch controls visible, active radio separated from minimap, no overflow or browser errors. Evidence is exported in the task outputs.

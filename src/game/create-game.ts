@@ -993,6 +993,10 @@ export function createGame(
   touch: TouchInput,
   onHud: (hud: HudSnapshot) => void,
 ): GameHandle {
+  // The city kit references the same atlases from many glTF files. Sharing
+  // decoded images avoids duplicate fetch/decode work during a cold boot.
+  const cacheWasEnabled = THREE.Cache.enabled;
+  THREE.Cache.enabled = true;
   const rand = mulberry32(0x51c0);
   const { xs: roadXs, zs: roadZs } = roadLines();
   const blocks = buildBlocks(rand);
@@ -8479,6 +8483,10 @@ export function createGame(
       roomsHandle = null;
       fleet?.dispose();
       fleet = null;
+      if (!cacheWasEnabled) {
+        THREE.Cache.clear();
+        THREE.Cache.enabled = false;
+      }
     },
   };
 }

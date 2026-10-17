@@ -1,0 +1,7 @@
+name: quaternius-downtown-city-megakit
+url: https://quaternius.com/packs/downtowncitymegakit.html
+mirror: https://quaternius.itch.io/downtown-city-megakit
+license: CC0-1.0
+date: 2026-10-15
+files: Building_Large_2, Building_Medium_2_001, Building_Small_1, Street_4Lane, Street_4WayIntersection, textures/
+notes: Engine copy of the free Standard kit. Raw zip stays on the art-source volume and was not edited. Image URIs rewritten to textures/. PNGs larger than 1024 were resized with Lanczos to 1024. 1 unit = 1 meter. Credit Models by @Quaternius.

@@ -1,0 +1,7 @@
+name: quaternius-universal-animation-library-2
+url: https://quaternius.itch.io/universal-animation-library-2
+license: CC0 1.0
+author: Quaternius
+date: 2026-10-15
+files: UAL2_Standard.glb
+notes: Engine copy is public/vendor/quaternius/universal-animation-library-2/UAL2_Standard.glb, copied as-is. Used for Idle_TalkingPhone_Loop. Duplicate clip names keep the library 1 version.

@@ -1,8 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { ViceroyApp } from "@/components/viceroy-app";
+import { BrookriverApp } from "@/components/brookriver-app";
 
 export const Route = createFileRoute("/")({ component: Home });
 
 function Home() {
-  return <ViceroyApp />;
+  return <BrookriverApp />;
 }

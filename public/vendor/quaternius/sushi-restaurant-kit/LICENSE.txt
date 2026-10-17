@@ -1,0 +1,14 @@
+Quaternius • Sushi Restaurant Kit (furniture / interior subset)
+
+License stated on the pack page as CC0:
+https://quaternius.com/packs/sushirestaurantkit.html
+https://creativecommons.org/publicdomain/zero/1.0/
+
+The poly.pizza mirror used for these GLBs states Licence: CC0 1.0 on each model page and links to the same CC0 deed.
+https://poly.pizza/bundle/Modular-Sushi-Restaurant-Kit-LJZrZsNPM7
+
+Models by @Quaternius
+https://www.patreon.com/quaternius
+
+This staging copy is tables, chairs, counters, floors, walls, and a few kitchen machines.
+It is not the character or food set. No slot machine or roulette table is in this pack.

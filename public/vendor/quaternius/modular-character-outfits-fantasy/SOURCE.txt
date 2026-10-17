@@ -1,0 +1,7 @@
+name: quaternius-modular-character-outfits-fantasy
+url: https://quaternius.itch.io/modular-character-outfits-fantasy
+license: CC0 1.0
+author: Quaternius
+date: 2026-10-15
+files: Male and Female Peasant, Male and Female Ranger (free standard only)
+notes: Engine copies live in public/vendor/quaternius/modular-character-outfits-fantasy. PNG textures were resized to 1024px max with Lanczos. The raw zip was not edited. Knights are not in the free zip and were not imported. Outfit meshes are rebound onto the superhero body skeleton. Ranger hoods are the head covering; those looks do not also wear hair. colors/T_Peasant_2_BaseColor.png and colors/T_Ranger_3_BaseColor.png are the second free colorways from the same zip, resized from 4096 to 1024.

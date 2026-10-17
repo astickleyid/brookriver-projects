@@ -1,0 +1,7 @@
+name: quaternius-universal-animation-library
+url: https://quaternius.itch.io/universal-animation-library
+license: CC0 1.0
+author: Quaternius
+date: 2026-10-15
+files: Unreal-Godot/UAL1_Standard.glb
+notes: Engine copy is public/vendor/quaternius/universal-animation-library/UAL1_Standard.glb, copied as-is. Root travel is stripped in the game after load, not in this file. UAL1 wins when a clip name also exists in library 2.

@@ -1,0 +1,8 @@
+name: quaternius-universal-base-characters
+url: https://quaternius.com/packs/universalbasecharacters.html
+itch: https://quaternius.itch.io/universal-base-characters
+license: CC0 1.0
+author: Quaternius
+date: 2026-10-15
+files: male and female superhero full bodies; hairstyles parted, beard, buzz, buns, long, buzzed female
+notes: Engine copies live in public/vendor/quaternius/universal-base-characters. PNG textures were resized to 1024px max with Lanczos. The raw zip was not edited. Two broken image URIs (T_Hair_1_Normal_png.png, T_Eye_Normal_png.png) were corrected only in the engine glTF. Body scale is 1 meter. Underwear torso, arms, and legs are hidden at runtime; eyes, brows, and separate hair stay.

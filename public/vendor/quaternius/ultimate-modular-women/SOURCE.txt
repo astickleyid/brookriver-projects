@@ -1,0 +1,7 @@
+name: quaternius-ultimate-modular-women
+url: https://quaternius.com/packs/ultimatemodularwomen.html
+license: CC0 1.0
+author: Quaternius
+date: 2026-10-16
+files: Casual.gltf, Formal.gltf, Punk.gltf, Suit.gltf, Worker.gltf, Soldier.gltf
+notes: Engine copy. Raw files stay on the art-source volume and were not edited. Credit Quaternius.

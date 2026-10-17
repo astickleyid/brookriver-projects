@@ -1,0 +1,7 @@
+name: kaykit-city-builder-bits
+url: https://kaylousberg.com/game-assets/city-builder-bits
+github: https://github.com/KayKit-Game-Assets/KayKit-City-Builder-Bits-1.0
+license: CC0-1.0
+date: 2026-10-15
+files: glTF + bins + citybits_texture.png
+notes: Engine copy of the free KayKit City Builder Bits pack. Raw zip stays on the art-source volume and was not edited. Texture is 1024 RGBA and was not resized. Paid Extra/Source were not downloaded. Credit Kay Lousberg.

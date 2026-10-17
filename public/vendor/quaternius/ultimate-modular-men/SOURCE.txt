@@ -1,0 +1,7 @@
+name: quaternius-ultimate-modular-men
+url: https://quaternius.com/packs/ultimatemodularcharacters.html
+license: CC0 1.0
+author: Quaternius
+date: 2026-10-16
+files: Casual_Hoodie.gltf, Casual_2.gltf, Punk.gltf, Suit.gltf, Worker.gltf, Beach.gltf, Farmer.gltf, Swat.gltf
+notes: Engine copy. Raw files stay on the art-source volume and were not edited. Same skeleton as Ultimate Modular Women. Clips live inside each glTF. Credit Quaternius.

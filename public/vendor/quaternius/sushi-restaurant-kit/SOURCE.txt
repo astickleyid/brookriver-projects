@@ -1,0 +1,7 @@
+name: quaternius-sushi-restaurant-kit
+url: https://quaternius.com/packs/sushirestaurantkit.html
+mirror: https://poly.pizza/bundle/Modular-Sushi-Restaurant-Kit-LJZrZsNPM7
+license: CC0-1.0
+date: 2026-10-15
+files: furniture and interior GLBs
+notes: Engine copy of CC0 Quaternius sushi interior props (tables, chairs, counters, floors, walls, kitchen machines). Not characters or food. No roulette or slot mesh. Embedded PNGs are 512 and were not resized. Author Drive download was quota-blocked. Credit Models by @Quaternius.

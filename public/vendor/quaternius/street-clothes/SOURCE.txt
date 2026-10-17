@@ -1,0 +1,6 @@
+name: ubc-street-clothes
+url: https://quaternius.com/packs/universalbasecharacters.html
+license: CC0
+date: 2026-10-16
+files: recolored albedo, flattened cloth normals, roughness
+note: Same Universal Base Characters mesh. Head and hands keep the superhero albedo. Torso, arms, legs, and shoes are flat street colors. Not a new character pack.

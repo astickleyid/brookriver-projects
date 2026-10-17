@@ -1,0 +1,111 @@
+Brookriver city additions — 2026-10-15
+Sizes are axis-aligned bounds in glTF units (width x height x depth), node transforms applied. Meshes were not rescaled.
+Existing Downtown City MegaKit files were not replaced.
+
+PACK kaykit/city-builder-bits
+license: CC0-1.0 (stated on https://kaylousberg.com/game-assets/city-builder-bits and in the pack LICENSE.txt)
+engine: public/vendor/kaykit/city-builder-bits/
+raw: /Volumes/GameStudio/Shared/art-source/kaykit/city-builder-bits/raw/KayKit-City-Builder-Bits-1.0-main.zip
+why: other free Quaternius city/building packs are FBX/OBJ/Blend only. This is a smooth stylized CC0 pack, not Kenney.
+
+base.gltf	city prop	2.00 x 0.10 x 2.00
+bench.gltf	city prop	0.40 x 0.10 x 0.15
+box_A.gltf	city prop	0.20 x 0.18 x 0.20
+box_B.gltf	city prop	0.15 x 0.17 x 0.15
+building_A.gltf	building	2.00 x 1.65 x 2.00
+building_A_withoutBase.gltf	building	1.21 x 1.55 x 1.45
+building_B.gltf	building	2.00 x 1.65 x 2.00
+building_B_withoutBase.gltf	building	1.61 x 1.55 x 1.30
+building_C.gltf	building	2.00 x 2.98 x 2.00
+building_C_withoutBase.gltf	building	1.21 x 2.25 x 1.30
+building_D.gltf	building	2.00 x 2.97 x 2.02
+building_D_withoutBase.gltf	building	1.61 x 2.25 x 1.30
+building_E.gltf	building	2.01 x 2.35 x 2.00
+building_E_withoutBase.gltf	building	2.01 x 2.25 x 1.45
+building_F.gltf	building	2.01 x 2.35 x 2.00
+building_F_withoutBase.gltf	building	2.01 x 2.25 x 1.30
+building_G.gltf	building	2.01 x 2.98 x 2.00
+building_G_withoutBase.gltf	building	2.01 x 2.25 x 1.45
+building_H.gltf	building	2.01 x 3.05 x 2.00
+building_H_withoutBase.gltf	building	2.01 x 2.95 x 1.30
+bush.gltf	city prop	0.19 x 0.38 x 0.20
+car_hatchback.gltf	city prop	0.42 x 0.37 x 0.81
+car_police.gltf	city prop	0.42 x 0.41 x 0.94
+car_sedan.gltf	city prop	0.42 x 0.37 x 0.94
+car_stationwagon.gltf	city prop	0.42 x 0.37 x 0.94
+car_taxi.gltf	city prop	0.42 x 0.43 x 0.94
+dumpster.gltf	city prop	0.57 x 0.32 x 0.35
+firehydrant.gltf	city prop	0.14 x 0.22 x 0.13
+road_corner.gltf	city prop	2.00 x 0.10 x 2.00
+road_corner_curved.gltf	city prop	2.00 x 0.10 x 2.00
+road_junction.gltf	city prop	2.00 x 0.10 x 2.00
+road_straight.gltf	city prop	2.00 x 0.10 x 2.00
+road_straight_crossing.gltf	city prop	2.00 x 0.10 x 2.00
+road_tsplit.gltf	city prop	2.00 x 0.10 x 2.00
+streetlight.gltf	city prop	0.27 x 0.96 x 0.07
+trafficlight_A.gltf	city prop	0.17 x 0.73 x 0.15
+trafficlight_B.gltf	city prop	0.28 x 0.96 x 0.15
+trafficlight_C.gltf	city prop	0.80 x 0.97 x 0.27
+trash_A.gltf	city prop	0.13 x 0.05 x 0.13
+trash_B.gltf	city prop	0.07 x 0.04 x 0.07
+watertower.gltf	city prop	0.50 x 0.67 x 0.50
+
+kaykit gltf count: 41
+
+PACK quaternius/sushi-restaurant-kit
+license: CC0-1.0 (stated on https://quaternius.com/packs/sushirestaurantkit.html and on each poly.pizza model page)
+engine: public/vendor/quaternius/sushi-restaurant-kit/
+raw: /Volumes/GameStudio/Shared/art-source/quaternius/sushi-restaurant-kit/raw/sushi-restaurant-kit-gltf-furniture.zip
+why: closest Quaternius glTF interior with tables, chairs, and counters. No roulette table and no slot machine ship in this pack.
+
+Arch.glb	casino prop	6.14 x 7.53 x 0.57
+Bench.glb	casino prop	0.88 x 0.74 x 1.57
+Bottle.glb	casino prop	0.31 x 0.97 x 0.30
+Bottles.glb	casino prop	0.90 x 1.02 x 1.30
+Bowl.glb	casino prop	0.98 x 0.46 x 1.00
+Cabinet_Doors.glb	casino prop	4.00 x 1.40 x 1.84
+Cabinet_Shelves.glb	casino prop	4.00 x 1.40 x 1.77
+Cabinet_Shelves_2.glb	casino prop	4.00 x 1.40 x 1.77
+Can_Fridge.glb	casino prop (kitchen machine, not a slot)	2.36 x 4.39 x 1.33
+Chair.glb	casino prop	0.98 x 1.05 x 0.98
+Chopping_Board.glb	casino prop	2.10 x 0.15 x 1.69
+Chukaman_Steamer.glb	casino prop (kitchen machine, not a slot)	1.09 x 0.42 x 1.09
+Counter_Corner.glb	casino prop	2.88 x 1.92 x 2.88
+Counter_Door.glb	casino prop	4.00 x 1.96 x 1.77
+Counter_Doors.glb	casino prop	4.00 x 1.92 x 1.77
+Counter_Drawers.glb	casino prop	4.00 x 1.92 x 1.77
+Counter_End.glb	casino prop	1.46 x 1.92 x 1.77
+Counter_Sink.glb	casino prop	4.00 x 2.26 x 1.77
+Counter_Straight.glb	casino prop	4.00 x 1.92 x 1.77
+Counter_Straight_2.glb	casino prop	4.00 x 1.92 x 2.61
+Doorway.glb	casino prop	4.00 x 5.17 x 0.80
+Fridge.glb	casino prop (kitchen machine, not a slot)	2.41 x 4.18 x 2.14
+Japanese_Door.glb	casino prop	4.00 x 3.70 x 0.26
+Kitchen.glb	casino prop (kitchen machine, not a slot)	4.00 x 0.50 x 4.00
+Kitchen_Flooring.glb	casino prop	4.00 x 0.50 x 4.00
+Kitchen_Knives.glb	casino prop	0.59 x 1.41 x 0.84
+Normal_Wall.glb	casino prop	4.00 x 5.18 x 0.80
+Oven.glb	casino prop (kitchen machine, not a slot)	2.14 x 2.23 x 1.96
+Pan.glb	casino prop	1.25 x 0.24 x 2.07
+Plate.glb	casino prop	1.00 x 0.15 x 1.02
+Red_Wood_Wall.glb	casino prop	3.75 x 4.96 x 0.35
+Shoji_Interior.glb	casino prop	4.00 x 4.43 x 0.64
+Shoji_Wall.glb	casino prop	4.00 x 5.17 x 0.80
+Sofa.glb	casino prop	3.90 x 1.57 x 1.62
+Stool.glb	casino prop	1.14 x 0.88 x 1.14
+Table.glb	casino prop	2.18 x 1.55 x 2.11
+Tile_Floor.glb	casino prop	4.00 x 0.60 x 4.00
+Wall_with_Shelves.glb	casino prop	4.00 x 5.18 x 1.00
+Wood_Floor.glb	casino prop	4.00 x 0.61 x 4.00
+Wood_Floor_Broken.glb	casino prop	4.00 x 1.16 x 4.00
+Wooden_Board.glb	casino prop	0.83 x 0.14 x 0.58
+
+sushi glb count: 41
+
+Refused
+- Quaternius Downtown City MegaKit Source (paid), and a re-download of the Standard zip already on disk.
+- Quaternius Ultimate Buildings, Buildings, Simple Buildings, Modular Streets, Farm Buildings, Furniture, Ultimate Furniture, Ultimate House Interior: pages say CC0, formats are FBX/OBJ/Blend only. No conversion.
+- Quaternius Medieval Village MegaKit, Modular Sci-Fi MegaKit, Fantasy Props MegaKit: CC0 glTF megakits, not a small city or casino set.
+- Kenney furniture was not used. A Quaternius glTF interior set was available.
+- No CC0 stylized roulette table or slot machine on quaternius.com or kaylousberg.com.
+- Author Google Drive for the sushi kit returned quota exceeded. Itch was not used.

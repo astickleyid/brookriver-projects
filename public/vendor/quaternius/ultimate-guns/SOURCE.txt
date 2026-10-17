@@ -1,0 +1,8 @@
+name: quaternius-ultimate-guns
+url: https://quaternius.com/packs/ultimategun.html
+itch: https://quaternius.itch.io/50-lowpoly-guns
+license: CC0 1.0
+author: Quaternius
+date: 2026-10-15
+files: engine GLBs pistol.glb, shotgun.glb, smg.glb made from FBX Pistol_4, Shotgun_2, SubmachineGun_2
+notes: The raw zip was not edited. Engine GLBs were converted in Blender and normalized to meters: pistol length 0.24, shotgun 0.78, smg 0.46, barrel along +Z, grip end nearer the origin. Original FBX dimensions were about 2m, 5.8m, and 4m on the long axis.

@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Star } from "lucide-react";
+import { DeskHost } from "@/components/desk/host";
+import type { UiCmd } from "@/game/desk";
 import type { GameHandle, HudSnapshot, TouchInput } from "@/game/create-game";
 import { ledgerLines } from "@/game/economy";
 
@@ -20,6 +22,7 @@ const EMPTY: HudSnapshot = {
   cooling: false,
   looking: false,
   pad: false,
+  padStatus: "Listening for a controller",
   lostCash: 0,
   error: "",
   gun: "PISTOL",
@@ -35,14 +38,20 @@ const EMPTY: HudSnapshot = {
   nearWork: false,
   nearTeller: false,
   assets: "",
+  portfolio: "",
   pauseSel: 0,
+  desk: null,
+  navSeq: 0,
+  navKey: "",
+  guns: [],
+  stations: [],
 };
 
 function makeTouch(): TouchInput {
-  return { x: 0, y: 0, lookX: 0, lookY: 0, fire: false, sprint: false, useQueued: false, reloadQueued: false, cycleGunQueued: false, radioQueued: false, hustleQueued: false, bankQueued: false, buy: "" };
+  return { x: 0, y: 0, lookX: 0, lookY: 0, fire: false, sprint: false, meleeQueued: false, jumpQueued: false, useQueued: false, reloadQueued: false, cycleGunQueued: false, radioQueued: false, hustleQueued: false, bankQueued: false, buy: "" };
 }
 
-export function ViceroyApp() {
+export function BrookriverApp() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const miniRef = useRef<HTMLCanvasElement>(null);
   const gameRef = useRef<GameHandle | null>(null);
@@ -51,6 +60,9 @@ export function ViceroyApp() {
   const [hud, setHud] = useState<HudSnapshot>(EMPTY);
   const [touchUi, setTouchUi] = useState(false);
   const [booted, setBooted] = useState(false);
+  const send = useCallback((cmd: UiCmd) => {
+    gameRef.current?.command(cmd);
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -82,23 +94,33 @@ export function ViceroyApp() {
   }, []);
 
   const start = () => {
+    const canvas = canvasRef.current;
+    try {
+      window.focus();
+    } catch {
+      /* ignore */
+    }
+    try {
+      navigator.getGamepads?.();
+    } catch {
+      /* insecure origin */
+    }
     if (gameRef.current) gameRef.current.start();
     else pendingStart.current = true;
-    if (!window.matchMedia("(pointer: coarse)").matches) canvasRef.current?.requestPointerLock?.();
   };
 
   const phase = hud.phase;
 
   return (
     <main className="fixed inset-0 overflow-hidden bg-bg font-sans text-fg">
-      <canvas ref={canvasRef} className="absolute inset-0 h-full w-full touch-none" aria-label="Viceroy city" />
+      <canvas ref={canvasRef} tabIndex={0} className="absolute inset-0 h-full w-full touch-none outline-none" aria-label="Brookriver city" />
       <canvas
         ref={miniRef}
         width={256}
         height={256}
         className={`pointer-events-none absolute z-10 bg-bg mini-frame ${
           phase === "play" ? "" : "hidden"
-        } ${touchUi ? "top-36 right-3 h-20 w-20" : "right-4 bottom-4 h-40 w-40"}`}
+        } ${touchUi ? "top-36 right-3 h-28 w-28" : "right-4 bottom-4 h-64 w-64"}`}
       />
 
       {phase === "play" ? (
@@ -107,8 +129,20 @@ export function ViceroyApp() {
             <div className="hud-chip w-28 px-2 py-1.5 sm:w-52">
               <Bar label="Health" value={hud.health} tone="blood" />
               <Bar label="Armor" value={hud.armor} tone="paper" />
-              <p className="mt-1 font-display text-2xl leading-none tracking-wide text-fg">{hud.gun}</p>
-              <p className="text-xs tracking-widest text-muted">{hud.ammo}</p>
+              <div className="pointer-events-auto mt-1 flex flex-col">
+                {hud.guns.map((piece) => (
+                  <button
+                    key={piece.id}
+                    type="button"
+                    disabled={!piece.owned}
+                    onClick={() => send({ op: "gun", id: piece.id })}
+                    className={`min-h-11 text-left font-display text-2xl leading-none disabled:opacity-40 ${piece.active ? "text-amber" : "text-fg"}`}
+                  >
+                    {piece.name}
+                    <span className="ml-2 text-xs tracking-widest text-muted">{piece.owned ? `${piece.mag}/${piece.reserve}` : "LOCK"}</span>
+                  </button>
+                ))}
+              </div>
             </div>
             <div className="flex flex-col items-center gap-1">
               <div className="flex gap-1">
@@ -127,7 +161,7 @@ export function ViceroyApp() {
                 {hud.cover ? "OFF THE LIGHT" : hud.cooling ? "LOSING THEM" : hud.wanted > 0 ? "WANTED" : "QUIET"}
               </p>
               {hud.job ? <p className="max-w-48 text-center text-xs text-amber">{hud.job}</p> : null}
-              {hud.hustle ? (
+              {hud.hustle && !hud.desk ? (
                 <div className="max-w-48 sm:max-w-xs">
                   <p className="text-center text-xs text-fg">{hud.hustle}</p>
                   {hud.hustlePct > 0 ? (
@@ -144,6 +178,18 @@ export function ViceroyApp() {
               <p className="text-sm leading-tight text-fg">Bank ${hud.bank.toLocaleString("en-US")}</p>
               {hud.loot > 0 ? <p className="text-xs text-amber">Goods ${hud.loot.toLocaleString("en-US")}</p> : null}
               {hud.assets ? <p className="text-xs leading-tight text-muted">{hud.assets}</p> : null}
+              <div className="pointer-events-auto mt-2 flex flex-col items-end">
+                {hud.stations.map((station, index) => (
+                  <button
+                    key={station.name}
+                    type="button"
+                    onClick={() => send({ op: "radio", index })}
+                    className={`min-h-11 text-xs tracking-widest ${station.active ? "text-amber" : "text-muted"}`}
+                  >
+                    {station.name}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -154,11 +200,7 @@ export function ViceroyApp() {
             <span className="absolute bottom-0 left-1/2 h-1.5 w-px bg-fg/90" />
           </div>
 
-          {hud.toast ? (
-            <p className="hud-chip absolute bottom-28 left-1/2 max-w-sm -translate-x-1/2 px-3 py-1 text-center text-sm text-fg">
-              {hud.toast}
-            </p>
-          ) : null}
+
 
           <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 flex-col items-center gap-1">
             {!touchUi && hud.driving ? (
@@ -167,17 +209,18 @@ export function ViceroyApp() {
                 <span className="ml-1 text-lg text-muted">MPH</span>
               </p>
             ) : null}
-            {hud.shop ? <p className="max-w-md text-center text-xs text-amber">{hud.shop}</p> : null}
+            {hud.shop && !hud.desk ? <p className="max-w-md text-center text-xs text-amber">{hud.shop}</p> : null}
+            {!hud.looking && !hud.pad ? <p className="text-center text-xs text-amber">{hud.padStatus}</p> : null}
             {hud.pad && !hud.looking ? (
               <p className="text-center text-xs tracking-wide text-muted">
                 {hud.driving
                   ? "RT gas · LT brake · LS steer · RS look · RB shoot · A exit · Start pauses"
-                  : "LS move · RS look · RT or RB shoot · A jack · B sprint · Start pauses"}
+                  : "LS move · RS look · RT shoots · RB hands · LT aim · R3 jumps · A jack · B sprint"}
               </p>
             ) : null}
             {!touchUi && !hud.pad && !hud.looking ? (
               <p className="text-center text-xs text-muted">
-                {hud.driving ? "Mouse looks · WASD drives · Shift drifts · Esc pauses" : "Click to look · WASD moves · Shift sprints · Esc pauses"}
+                {hud.driving ? "Mouse looks · WASD drives · Shift drifts · Esc pauses" : "Click to look · WASD moves · Space jumps · C swings · Shift sprints · Esc pauses"}
               </p>
             ) : null}
           </div>
@@ -188,7 +231,7 @@ export function ViceroyApp() {
         <div className="scrim-bottom absolute inset-0 z-20 flex flex-col justify-end p-4 safe-b sm:p-8">
           <div className="max-w-xl border-l-2 border-amber pl-4">
             <p className="text-xs tracking-widest text-amber">WARD 04 · NIGHT OPEN</p>
-            <h1 className="font-display text-6xl leading-none text-fg sm:text-8xl">VICEROY</h1>
+            <h1 className="font-display text-6xl leading-none text-fg sm:text-8xl">BROOKRIVER</h1>
             <p className="mt-2 max-w-md text-sm text-muted sm:text-lg">
               The wallet is what the street can take. The bank keeps the rest. The plaza fixer sells the city off the same scale.
             </p>
@@ -215,12 +258,13 @@ export function ViceroyApp() {
               </button>
               <p className="text-sm text-muted">{booted ? "Night is live." : "Wiring the blocks…"}</p>
             </div>
-            <p className="mt-4 text-sm text-muted">
+            <p className="mt-4 text-sm text-amber">{hud.padStatus}</p>
+            <p className="mt-2 text-sm text-muted">
               {hud.pad
-                ? "Controller connected. Press A to start. Right stick looks. Right bumper shoots."
+                ? "Left stick moves. Right stick looks. RT drives. On foot, LT aims and RT shoots."
                 : touchUi
                   ? "Left stick drives. Work shows up on a mark, a door, the bank, or the plaza fixer."
-                  : "You start with $40. Click to look. White post is the bank. Plaza fixer sells rides, guns, and the house."}
+                  : "You start with $40. Click the city to look. White post is the bank. The plaza fixer sells a house, a shop, or a car. F walks through a door you can enter."}
             </p>
             {hud.bank > 0 ? <p className="mt-2 text-sm text-fg">Bank ${hud.bank.toLocaleString("en-US")}</p> : null}
             {hud.best > 0 ? <p className="mt-2 text-sm text-amber">Best net ${hud.best.toLocaleString("en-US")}</p> : null}
@@ -234,6 +278,7 @@ export function ViceroyApp() {
           <div className="w-full max-w-md border-l-2 border-amber pl-4">
             <p className="text-xs tracking-widest text-amber">WARD 04</p>
             <h2 className="font-display text-6xl leading-none text-fg sm:text-7xl">PAUSED</h2>
+            {hud.portfolio ? <p className="mt-3 max-w-sm whitespace-pre-line text-sm text-fg">{hud.portfolio}</p> : null}
             <div className="mt-4 flex flex-col items-start gap-2">
               {["Resume", "Quit to title"].map((label, i) => (
                 <button
@@ -251,14 +296,15 @@ export function ViceroyApp() {
               <p>
                 <span className="tracking-widest text-fg">KEYBOARD</span>
                 <br />
-                Esc pauses. Arrows choose. Enter confirms. WASD moves. Mouse looks. Click shoots. Shift sprints or drifts. F uses a car. 1 2 3 guns.
+                Esc pauses. Arrows choose. Enter confirms. WASD moves. Space jumps. Mouse looks. Right mouse aims. Click shoots. C throws hands. Shift sprints or drifts. F uses a car or walks inside. Houses, shops, the bank, the fixer, and each casino table open their own screen. Click the one you want. J confirms the highlighted button. K moves it.
               </p>
               <p>
                 <span className="tracking-widest text-fg">GAMEPAD</span>
                 <br />
-                Start pauses. Stick or D-pad chooses. A confirms. B resumes. Left stick moves. Right stick looks. RT gas or shoot. LT brakes. RB shoots.
+                Start pauses. Stick or D-pad chooses. A confirms. B resumes. Left stick moves, and a full push sprints. Right stick looks. R3 jumps. In a car, RT is gas, LT brakes, and RB shoots. On foot, LT aims, RT shoots, and RB throws hands. A uses. B drifts.
               </p>
             </div>
+            <p className="mt-4 text-xs text-muted">People and the downtown kit, Quaternius. Cars, Cosmo. Extra city bits, Kay Lousberg.</p>
           </div>
         </div>
       ) : null}
@@ -283,12 +329,19 @@ export function ViceroyApp() {
         </div>
       ) : null}
 
-      {phase === "play" && touchUi && hud.nearShop ? (
+      {phase === "play" && hud.desk ? <DeskHost desk={hud.desk} navSeq={hud.navSeq} navKey={hud.navKey} send={send} /> : null}
+
+      {phase === "play" && hud.toast ? (
+        <p className="hud-chip pointer-events-none absolute bottom-36 left-1/2 z-40 max-w-sm -translate-x-1/2 px-3 py-1 text-center text-sm text-fg sm:bottom-28">
+          {hud.toast}
+        </p>
+      ) : null}
+
+      {phase === "play" && touchUi && hud.nearShop && !hud.desk ? (
         <div className="absolute top-40 left-3 z-20 flex flex-col gap-2">
           <TouchButton label="Bail" onDown={() => { touchRef.current.buy = "bail"; }} onUp={() => {}} />
           <TouchButton label="Vest" onDown={() => { touchRef.current.buy = "vest"; }} onUp={() => {}} />
           <TouchButton label="Shot" onDown={() => { touchRef.current.buy = "shotgun"; }} onUp={() => {}} />
-          <TouchButton label="Sport" onDown={() => { touchRef.current.buy = "sport"; }} onUp={() => {}} />
         </div>
       ) : null}
 
@@ -302,6 +355,24 @@ export function ViceroyApp() {
             }}
           />
           <div className="mb-2 flex flex-col gap-2">
+            {!hud.driving ? (
+              <TouchButton
+                label="Jump"
+                onDown={() => {
+                  touchRef.current.jumpQueued = true;
+                }}
+                onUp={() => {}}
+              />
+            ) : null}
+            {!hud.driving ? (
+              <TouchButton
+                label="Hands"
+                onDown={() => {
+                  touchRef.current.meleeQueued = true;
+                }}
+                onUp={() => {}}
+              />
+            ) : null}
             <TouchButton
               label="Fire"
               onDown={() => {
@@ -341,7 +412,7 @@ export function ViceroyApp() {
               }}
               onUp={() => {}}
             />
-            {hud.nearWork ? (
+            {hud.nearWork && !hud.desk ? (
               <TouchButton
                 label={hud.nearTeller ? "Deposit" : "Work"}
                 onDown={() => {
@@ -350,7 +421,7 @@ export function ViceroyApp() {
                 onUp={() => {}}
               />
             ) : null}
-            {hud.nearTeller || (hud.nearWork && hud.hustle.includes("swap")) ? (
+            {(hud.nearTeller || (hud.nearWork && hud.hustle.includes("swap"))) && !hud.desk ? (
               <TouchButton
                 label={hud.nearTeller ? "Draw" : "Swap"}
                 onDown={() => {

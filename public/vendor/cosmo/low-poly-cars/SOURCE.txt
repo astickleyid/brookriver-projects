@@ -1,0 +1,6 @@
+name: cosmo-low-poly-cars
+url: https://cosmo-art.itch.io/low-poly-cars
+license: CC0-1.0
+date: 2026-10-15
+files: mobil.glb, kamaro.glb, italia.glb, lamb.glb, fenyr.glb, coupe.glb, rally.glb, ghini.glb, van.glb, jeep.glb, armor.glb, police.glb
+notes: Engine copy of the free CC0 pack. Raw zip stays on the art-source volume and was not edited. Premium was not downloaded. Bodies share a ride class so length, radius, and steer stay put. sedan=mobil|kamaro, sport=italia|lamb|fenyr|coupe|rally|ghini, van=van|jeep|armor, cruiser=police. Embedded textures were not resized. 1 unit = 1 meter. Credit Low Poly Cars by Cosmo.

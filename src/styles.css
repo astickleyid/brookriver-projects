@@ -10,7 +10,59 @@
   --color-amber: #ffb020;
   --color-blood: #e23b3b;
   --color-line: #2a2e38;
+  --color-felt: #0e2a24;
+  --color-zero: #1f6f6a;
   --radius: 2px;
+}
+
+[data-on="1"] {
+  outline: 2px solid var(--color-amber);
+  outline-offset: 2px;
+}
+
+@keyframes reel-stop {
+  from {
+    transform: translateY(-30%);
+    opacity: 0.35;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+.reel-stop {
+  animation: reel-stop 220ms ease-out both;
+}
+
+.reel-row > .reel-stop:nth-child(2) {
+  animation-delay: 90ms;
+}
+
+.reel-row > .reel-stop:nth-child(3) {
+  animation-delay: 180ms;
+}
+
+@keyframes desk-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.desk-in {
+  animation: desk-in 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reel-stop,
+  .desk-in {
+    animation: none;
+  }
 }
 
 @layer base {

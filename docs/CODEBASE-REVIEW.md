@@ -52,7 +52,7 @@ The resident wardrobe system adds:
 - Persistent resident names, roles, personality descriptions, idle preferences, walking pace and gait variation. The nearby interaction board shows the resident's identity.
 - Material/bone batching for rigid accessories, plus cleanup of generated geometry and textures.
 
-The playable cast is now a separate authored roster: Mara / AFTERHOURS, Leon / DEADSTOCK, Imani / PULSE, Rafa / TORQUE, Jules / OFFSCRIPT and Sana / SUNDOWN. Players choose at the beginning using a live animated model, turn/walk previews and saved selection. Each protagonist has separately sculpted proportions/face geometry, chosen skin/hair colors, independently constructed skinned garments, a biography, personality, introductory caption and voice direction. See [CHARACTER-DIRECTION.md](CHARACTER-DIRECTION.md) for the roster and implementation details.
+The playable cast has nine identities, led by Rhett / REDLINE, Cole / KICKFLIP and Axel / HEAVY HITTER: three masculine white men with athletic, lean and muscular builds. Mara, Leon, Imani, Rafa, Jules and Sana also have rebuilt bodies and clothing. The previous procedural player torso shells have been replaced by compact authored modular garment meshes, fitted offline to the original animation skeleton. Each character has chosen skin/hair colors, facial proportions, sportswear branding, biography, personality, introductory caption and voice direction. The title screen provides an animated selection, turn/walk previews and saved identity. See [CHARACTER-DIRECTION.md](CHARACTER-DIRECTION.md) for the asset pipeline and roster.
 
 The source facial topology and animation skeleton remain shared Quaternius assets. Voice direction is written metadata; recorded accents, branching dialogue and character questlines remain outside this implementation.
 
@@ -68,7 +68,7 @@ Shotgun and SMG animation still derive from the available pistol set. This is an
 
 ## Verification
 
-- Game unit tests: **107 passing**, including new world geometry, directional movement, appearance and wardrobe regressions.
+- Game unit tests: **108 passing**, including new world geometry, directional movement, appearance and wardrobe regressions.
 - TypeScript: passing.
 - Production build: passing.
 - Browser regression: steering in both directions, aimed strafe/backpedal, jump/landing, melee wind-up/contact damage, moving reload/refill, usable outer road, physical perimeter, resident identity and wardrobe captures.
@@ -90,7 +90,7 @@ PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH='/path/to/chrome' node scripts/game-review.m
 
 1. Author recognizable neighborhoods, a real waterfront, sightlines, alleys and landmarks on top of the repaired geometry contract. Add more building families before expanding map size.
 2. Replace the remaining broad collision approximations for street furniture with an authored prop/collision list.
-3. Continue the playable cast art pass with bespoke facial topology, richer cloth textures/folds and recorded voice performances; validate the six identities with players.
+3. Continue the playable cast art pass with bespoke facial topology, richer cloth textures/folds and recorded voice performances; validate the nine identities with players.
 4. Add proper shotgun/SMG animation assets and left-hand placement. Compare muzzle direction, hand contact and reload timing per weapon.
 5. Extract world creation, combat, police/traffic, audio and persistence from the orchestrator in separate, tested changes.
 6. Profile actual target devices. Browser viewport checks do not establish phone GPU performance or physical controller acceptance.

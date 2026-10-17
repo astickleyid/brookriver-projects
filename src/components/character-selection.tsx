@@ -31,7 +31,7 @@ export function CharacterSelection({
       <div className="character-stage-label" aria-hidden="true">
         <span className="font-display text-7xl leading-none tracking-wide">{hero.brand}</span>
         <span className="mt-1 text-xs tracking-widest text-muted">
-          {String(index + 1).padStart(2, "0")} / 06 · IN-GAME MODEL
+          {String(index + 1).padStart(2, "0")} / {String(PLAYABLES.length).padStart(2, "0")} · IN-GAME MODEL
         </span>
       </div>
       <div className="character-preview-tools">

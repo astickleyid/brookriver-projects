@@ -7424,7 +7424,8 @@ export function createGame(
         if (!started) {
           placeActor(playerActor, 0, 40, 0, previewYaw);
           setHeldGun(playerActor, null);
-          updateActor(playerActor, { down: false, reloading: false, shooting: false, aiming: false, pitch: 0, diving: false, speed: previewWalk ? 1.6 : 0, fighting: false, armed: false, lingering: !previewWalk, beat: playerActor.profile.idle }, 0, animDt, 0);
+          const folded = playableById(chosenCharacter).previewPose === "folded" && !previewWalk;
+          updateActor(playerActor, { down: false, reloading: false, shooting: false, aiming: false, pitch: 0, diving: false, speed: previewWalk ? 1.6 : 0, fighting: false, armed: false, lingering: !previewWalk && !folded, beat: folded ? "talk" : playerActor.profile.idle }, 0, animDt, 0);
         }
         else if (!showPlayer) playerActor.root.visible = false;
         else {

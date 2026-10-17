@@ -1,6 +1,4 @@
 import * as THREE from "three/webgpu";
-import { PLAYABLES } from "./roster.ts";
-import { coatHem, tailoredWardrobe, clothBinding, clothFront } from "./roster-model.ts";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
 export type Wardrobe = "tee" | "hoodie" | "jacket" | "worker" | "suit" | "uniform";
@@ -235,11 +233,6 @@ export function dressCharacter(rig: THREE.Object3D, profile: CharacterProfile) {
     mat.roughness = 0.95;
     body.material = mat;
   }
-  const hero = PLAYABLES.find((p) => p.id === profile.id);
-  if (hero) {
-    tailoredWardrobe(body, hero);
-    if (["mara", "sana"].includes(hero.id)) coatHem(body, hero);
-  } else {
   const shell = new THREE.SkinnedMesh(
     garmentGeometry(
       body.geometry,
@@ -254,19 +247,16 @@ export function dressCharacter(rig: THREE.Object3D, profile: CharacterProfile) {
   shell.frustumCulled = false;
   body.parent!.add(shell);
 
-  }
-
   const black = material(0x252a30),
     cloth = material(profile.fabric),
     accent = material(profile.accent),
     metal = material(0xb2ac92, 0.7),
     lens = material(0x1b2833, 0.45);
   const attachments: THREE.Mesh[] = [];
-  const used = new Set<THREE.Material>();
   const head = rig.getObjectByName("Head"),
     chest = rig.getObjectByName("spine_03"),
     hips = rig.getObjectByName("pelvis");
-  const headH = hero ? (hero.sex === "f" ? 1.70 : 1.73) : profile.outfit === "uniform" || !rig.name.includes("-f") ? 1.73 : 1.685;
+  const headH = profile.outfit === "uniform" || !rig.name.includes("-f") ? 1.73 : 1.685;
   const add = (
     bone: THREE.Object3D | undefined,
     geo: THREE.BufferGeometry,
@@ -282,31 +272,11 @@ export function dressCharacter(rig: THREE.Object3D, profile: CharacterProfile) {
       geo.dispose();
       return;
     }
-    used.add(mat);
     const transform = new THREE.Matrix4().compose(
       new THREE.Vector3(x, y, z + (bone === chest && z > 0 ? 0.055 : 0)),
       new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, 0, rz)),
       new THREE.Vector3(...scale),
     );
-    if (hero && bone === chest && z > 0) {
-      // Garment details share the cloth's skin weights. Rigid spine attachments
-      // float away during a shove/reload because the fabric blends several bones.
-      const authored = new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, 0, rz)), new THREE.Vector3(...scale));
-      geo.applyMatrix4(authored);
-      const p = geo.getAttribute("position"), joints: number[] = [], weights: number[] = [];
-      const boneId = (name: string) => Math.max(0, body!.skeleton.bones.findIndex((b) => b.name === name));
-      for (let i = 0; i < p.count; i++) {
-        const bind = clothBinding(p.getY(i));
-        joints.push(boneId(bind.a), boneId(bind.b), 0, 0); weights.push(1 - bind.t, bind.t, 0, 0);
-        p.setZ(i, clothFront(hero, p.getX(i), p.getY(i)) + .012 + (p.getZ(i) - z));
-      }
-      geo.setAttribute("skinIndex", new THREE.Uint16BufferAttribute(joints, 4));
-      geo.setAttribute("skinWeight", new THREE.Float32BufferAttribute(weights, 4));
-      geo.computeVertexNormals();
-      const mesh = new THREE.SkinnedMesh(geo, mat); mesh.name = `wardrobe:${profile.name}`;
-      mesh.frustumCulled = false; mesh.bind(body!.skeleton, body!.bindMatrix); body!.parent!.add(mesh);
-      return;
-    }
     const local = bone.matrixWorld.clone().invert().multiply(rig.matrixWorld).multiply(transform);
     geo.applyMatrix4(local);
     const mesh = new THREE.Mesh(geo, mat);
@@ -325,56 +295,6 @@ export function dressCharacter(rig: THREE.Object3D, profile: CharacterProfile) {
     d: number,
     rz = 0,
   ) => add(bone, new THREE.BoxGeometry(w, h, d), mat, x, y, z, [1, 1, 1], 0, rz);
-  if (hero) {
-    const hair = material(hero.hairTint);
-
-    if (!["sana", "jules", "mara"].includes(hero.id)) {
-      box(chest, black, 0, 1.26, .245, .012, .34, .008);
-      box(chest, metal, .012, 1.39, .252, .016, .025, .01);
-    }
-    if (hero.id === "leon") {
-      // Dense rounded curl silhouette; small overlapping curls avoid a helmet outline.
-      for (let ring = 0; ring < 5; ring++) for (let j = 0; j < 14; j++) {
-        const a = j / 14 * Math.PI * 2 + ring * .2, polar = .15 + ring * .31, radius = .14 * Math.sin(polar);
-        add(head, new THREE.IcosahedronGeometry(.033, 1), hair, Math.cos(a) * radius, 1.745 + .14 * Math.cos(polar), Math.sin(a) * radius - .015);
-      }
-      // Varsity cuffs, hem and a stitched chest monogram.
-      box(chest, accent, 0, 1.03, .19, .43, .045, .024);
-      box(chest, accent, -.11, 1.37, .2, .055, .11, .015);
-      box(chest, accent, -.085, 1.322, .2, .08, .022, .015);
-    }
-    if (hero.id === "imani") {
-      for (const side of [-1, 1]) for (let j = 0; j < 7; j++) {
-        const a = j / 7 * Math.PI * 2;
-        add(head, new THREE.TorusGeometry(.046, .012, 6, 12), hair, side * .09 + Math.cos(a) * .022, 1.75 + Math.sin(a) * .025, -.015 + j * .005, [1, 1, .7], .5, side * .2);
-      }
-      for (const x of [-.15, .15]) box(chest, accent, x, 1.31, .2, .012, .27, .012);
-      for (const [side, x] of [["l", .14], ["r", -.14]] as const) {
-        const thigh = rig.getObjectByName(`thigh_${side}`);
-        box(thigh, black, x, .76, .145, .14, .17, .04);
-        box(thigh, accent, x, .83, .17, .105, .012, .012);
-      }
-    }
-    if (hero.id === "rafa") {
-      for (const x of [-.105, .105]) {
-        box(chest, accent, x, 1.22, .23, .12, .12, .025);
-        box(chest, black, x, 1.28, .245, .12, .018, .014);
-      }
-      add(head, new THREE.SphereGeometry(.112, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), hair, 0, 1.76, -.01, [1, .45, 1]);
-    }
-    if (hero.id === "mara") {
-      for (const x of [-.09, .09]) for (const y of [1.17, 1.27]) add(chest, new THREE.SphereGeometry(.009, 8, 6), metal, x, y, .2);
-    }
-    if (hero.id === "sana") {
-      // Long pendant and knit cuffs accent the open cardigan.
-      box(chest, metal, 0, 1.23, .24, .018, .13, .015);
-      add(chest, new THREE.TorusGeometry(.023, .006, 6, 16), metal, 0, 1.16, .24);
-    }
-    // Eyebrows follow the authored hair color instead of the default black brow.
-    rig.traverse((o) => { const mesh = o as THREE.Mesh; if (mesh.isMesh && /brow/i.test(mesh.name)) {
-      const mat = (mesh.material as THREE.MeshStandardMaterial).clone(); mat.color.set(hero.hairTint); mesh.material = mat;
-    }});
-  }
   if (profile.outfit === "hoodie") {
     add(
       chest,
@@ -390,13 +310,13 @@ export function dressCharacter(rig: THREE.Object3D, profile: CharacterProfile) {
     box(chest, accent, 0.035, 1.35, 0.155, 0.008, 0.16, 0.012);
     box(chest, black, 0, 1.08, 0.16, 0.24, 0.11, 0.035);
   }
-  if (!hero && (profile.outfit === "jacket" || profile.outfit === "suit")) {
+  if (profile.outfit === "jacket" || profile.outfit === "suit") {
     box(chest, accent, -0.065, 1.35, 0.15, 0.045, 0.18, 0.026, -0.25);
     box(chest, accent, 0.065, 1.35, 0.15, 0.045, 0.18, 0.026, 0.25);
     box(chest, black, 0, 1.22, 0.16, 0.012, 0.37, 0.02);
     if (profile.outfit === "suit") box(chest, accent, 0, 1.37, 0.18, 0.025, 0.2, 0.018);
   }
-  if (!hero && profile.outfit === "worker") {
+  if (profile.outfit === "worker") {
     for (const x of [-0.115, 0.115]) box(chest, accent, x, 1.25, 0.16, 0.045, 0.4, 0.022);
     box(chest, accent, 0, 1.11, 0.18, 0.32, 0.045, 0.022);
   }
@@ -444,7 +364,7 @@ export function dressCharacter(rig: THREE.Object3D, profile: CharacterProfile) {
       for (const x of [-0.14, 0.14]) box(head, accent, x, headH - 0.065, 0, 0.055, 0.12, 0.085);
     }
     if (item === "chain")
-      add(chest, new THREE.TorusGeometry(hero ? .072 : .105, 0.005, 6, 20), metal, 0, hero ? 1.39 : 1.41, hero ? .21 : .105, [1, 0.9, 1]);
+      add(chest, new THREE.TorusGeometry(0.105, 0.008, 6, 20), metal, 0, 1.41, 0.105, [1, 0.9, 1]);
     if (item === "backpack") {
       box(chest, black, 0, 1.24, -0.2, 0.29, 0.37, 0.16);
       box(chest, accent, 0, 1.18, -0.295, 0.21, 0.16, 0.055);
@@ -481,5 +401,6 @@ export function dressCharacter(rig: THREE.Object3D, profile: CharacterProfile) {
       mesh.geometry.dispose();
     }
   }
+  const used = new Set(attachments.map((m) => m.material));
   for (const mat of [black, cloth, accent, metal, lens]) if (!used.has(mat)) mat.dispose();
 }

@@ -13,7 +13,11 @@ const browser = await chromium.launch({
     ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH }
     : {}),
 });
-const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+const page = await browser.newPage({
+  // Nitro preview compresses every asset on demand; gzip avoids costly cold Brotli work.
+  extraHTTPHeaders: { "Accept-Encoding": "gzip" },
+  viewport: { width: 1280, height: 800 },
+});
 const errors = [];
 page.on("pageerror", (e) => errors.push(e.message));
 page.on("console", (m) => {
@@ -136,7 +140,11 @@ try {
   await advance(20);
   assert.ok((await page.locator("body").innerText()).includes("Mara Mercer"));
   results.residentIdentity = "visible name, role and personality";
-  const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const mobile = await browser.newPage({
+    // Nitro preview compresses every asset on demand; gzip avoids costly cold Brotli work.
+    extraHTTPHeaders: { "Accept-Encoding": "gzip" },
+    viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true,
+  });
   mobile.on("pageerror", (e) => errors.push(e.message));
   await mobile.goto(url, { waitUntil: "domcontentloaded" });
   await mobile.waitForFunction(() => window.render_game_to_text && Object.values(JSON.parse(window.render_game_to_text()).ready).every(Boolean), null, { timeout: 90000 });

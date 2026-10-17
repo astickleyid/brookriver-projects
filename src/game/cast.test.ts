@@ -145,7 +145,7 @@ describe("cast roster", () => {
     assert.equal(amber.size, 4);
     assert.equal(teal.size, 4);
     assert.ok(cops.size >= 3);
-    assert.equal(actorKey("player", 3), "player-rafa");
+    assert.equal(actorKey("player", 3), "player-mara");
     const outfits = new Set(Array.from({ length: 40 }, (_, i) => actorCut(actorKey("civ", i))));
     assert.ok(outfits.has("hoodie"));
     assert.ok(outfits.has("suit"));

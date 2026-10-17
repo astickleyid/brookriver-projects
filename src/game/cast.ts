@@ -1,14 +1,15 @@
 import * as THREE from "three/webgpu";
 import { PLAYABLES, playableProfile } from "./roster.ts";
-import { sculptBody } from "./roster-model.ts";
+import { styleArcadeCharacter } from "./arcade-style.ts";
+import { isolateHead } from "./roster-model.ts";
 import { characterProfile, dressCharacter, type CharacterProfile } from "./wardrobe.ts";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { clone as cloneSkinned } from "three/addons/utils/SkeletonUtils.js";
 
 /**
  * Quaternius CC0 skeleton, face and hair sources with authored Brookriver identities.
- * Playable bodies are sculpted in bind space; separately weighted garments provide
- * their silhouettes. Residents keep the lighter shared wardrobe system.
+ * Playable bodies use offline-fitted authored clothing meshes on the original rig.
+ * Detailed source heads are retained. Residents use the lighter wardrobe system.
  * Imported bodies face +Z; the mount turns their front onto the game's -Z.
  */
 export const MEASURED_TOE = new THREE.Vector3(0, -0.0713, 0.1422);
@@ -609,6 +610,45 @@ function varyLook(look: LookMaps, reference: LookMaps, other: LookMaps, key: str
   return { ...look, color: map };
 }
 
+/** Detailed source heads, colored to the authored arcade body instead of a random atlas tint. */
+function heroHeadLook(
+  look: LookMaps,
+  reference: LookMaps,
+  other: LookMaps,
+  color: number,
+): LookMaps {
+  const { canvas, ctx, pixels } = pixelsOf(look.color);
+  const a = pixelsOf(reference.color).pixels.data,
+    b = pixelsOf(other.color).pixels.data;
+  const d = pixels.data,
+    mask = new Uint8Array(d.length / 4),
+    mean = [0, 0, 0];
+  let count = 0;
+  for (let i = 0; i < d.length; i += 4) {
+    const skin =
+      Math.abs(a[i]! - b[i]!) + Math.abs(a[i + 1]! - b[i + 1]!) + Math.abs(a[i + 2]! - b[i + 2]!) <
+        18 &&
+      a[i]! > a[i + 1]! * 1.08 &&
+      a[i + 1]! > a[i + 2]! * 1.08;
+    if (skin) {
+      mask[i / 4] = 1;
+      count++;
+      for (let c = 0; c < 3; c++) mean[c]! += d[i + c]!;
+    }
+  }
+  const tint = new THREE.Color(color).convertLinearToSRGB(),
+    rgb = [tint.r * 255, tint.g * 255, tint.b * 255];
+  for (let i = 0; i < d.length; i += 4)
+    if (mask[i / 4])
+      for (let c = 0; c < 3; c++)
+        d[i + c] = Math.min(255, (d[i + c]! * rgb[c]!) / (mean[c]! / Math.max(1, count)));
+  ctx.putImageData(pixels, 0, 0);
+  const map = new THREE.CanvasTexture(canvas);
+  map.colorSpace = THREE.SRGBColorSpace;
+  map.flipY = look.color.flipY;
+  return { ...look, color: map };
+}
+
 function applyLook(root: THREE.Object3D, spec: ProtoSpec, look: LookMaps) {
   const hairTint = new THREE.Color(spec.hairTint);
   root.traverse((obj) => {
@@ -734,11 +774,8 @@ export function createActor(lib: CastLibrary, key: string, gun: HeldGun | "all" 
   const rig = cloneSkinned(proto) as THREE.Object3D;
   const hero = PLAYABLES.find((p) => key === `player-${p.id}`);
   const profile = hero ? playableProfile(hero) : characterProfile(key, residentIndex);
-  if (hero) rig.traverse((o) => {
-    const mesh = o as THREE.SkinnedMesh;
-    if (mesh.isSkinnedMesh && /superhero/i.test(mesh.name)) mesh.geometry = sculptBody(mesh.geometry, hero);
-  });
-  dressCharacter(rig, profile);
+  if (hero) styleArcadeCharacter(rig, hero);
+  else dressCharacter(rig, profile);
   lib.sources.push(rig);
   const mount = new THREE.Group();
   mount.name = "mount";
@@ -930,6 +967,7 @@ export async function loadCast(): Promise<CastLibrary> {
       ...outfits.map((outfit) => loadMap(`${BASE}/street-clothes/${sex}-${outfit}.png`, THREE.SRGBColorSpace)),
     ]),
     ...Object.values(hairFile).map((file) => load(`${BASE}/universal-base-characters/hair/${file}`)),
+    ...PLAYABLES.map((hero) => load(hero.asset)),
   ]);
   const looks = new Map<string, LookMaps>();
   let cursor = 0;
@@ -948,7 +986,66 @@ export async function loadCast(): Promise<CastLibrary> {
   });
   const bodies = { m: male, f: female };
   const prototypes = new Map<string, THREE.Object3D>();
+  const heroModels = PLAYABLES.map(
+    (_, i) => rest[cursor + Object.keys(hairFile).length + i] as Gltf,
+  );
   for (const spec of PROTOS) {
+    const heroIndex = PLAYABLES.findIndex((hero) => spec.key === `player-${hero.id}`);
+    if (heroIndex >= 0) {
+      const rig = cloneSkinned(heroModels[heroIndex]!.scene) as THREE.Object3D;
+      rig.name = spec.key;
+      const hero = PLAYABLES[heroIndex]!,
+        headRig = cloneSkinned(bodies[spec.sex].scene) as THREE.Object3D;
+      headRig.traverse((o) => {
+        const mesh = o as THREE.SkinnedMesh;
+        if (!mesh.isSkinnedMesh || !/superhero/i.test(mesh.name)) return;
+        mesh.geometry = isolateHead(
+          mesh.geometry,
+          mesh.skeleton.bones.map((b) => b.name),
+          hero,
+        );
+      });
+      const headLook = heroHeadLook(
+        looks.get(`${spec.sex}-tee`)!,
+        looks.get(`${spec.sex}-tee`)!,
+        looks.get(`${spec.sex}-hoodie`)!,
+        hero.skinColor,
+      );
+      applyLook(headRig, spec, headLook);
+      const bones = bonesOf(rig),
+        arm = armatureOf(rig);
+      harvest(headRig, bones, arm);
+      if (hero.id === "briggs" || hero.id === "rafa") {
+        for (const id of hero.id === "rafa" ? ["parted", "beard"] : ["beard"]) {
+          const hair = hairById.get(id);
+          if (!hair) continue;
+          const before = arm.children.length;
+          harvest(hair.scene, bones, arm);
+          for (const object of arm.children.slice(before))
+            object.traverse((o) => {
+              const mesh = o as THREE.Mesh;
+              if (!mesh.isMesh) return;
+              const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+              const tinted = materials.map((source) => {
+                const mat = source.clone() as THREE.MeshStandardMaterial;
+                mat.color.set(hero.hairTint);
+                return mat;
+              });
+              mesh.material = tinted.length === 1 ? tinted[0]! : tinted;
+            });
+        }
+      }
+      rig.traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        if (mesh.isMesh) {
+          mesh.frustumCulled = false;
+          mesh.castShadow = false;
+          mesh.receiveShadow = false;
+        }
+      });
+      prototypes.set(spec.key, rig);
+      continue;
+    }
     const rig = cloneSkinned(bodies[spec.sex].scene) as THREE.Object3D;
     const bones = bonesOf(rig);
     const arm = armatureOf(rig);
@@ -959,7 +1056,12 @@ export async function loadCast(): Promise<CastLibrary> {
     }
     const look = looks.get(`${spec.sex}-${spec.outfit}`);
     if (!look) throw new Error(`missing outfit ${spec.sex}-${spec.outfit}`);
-    const varied = varyLook(look, looks.get(`${spec.sex}-tee`)!, looks.get(`${spec.sex}-hoodie`)!, spec.key);
+    const varied = varyLook(
+      look,
+      looks.get(`${spec.sex}-tee`)!,
+      looks.get(`${spec.sex}-hoodie`)!,
+      spec.key,
+    );
     applyLook(rig, spec, varied);
     rig.name = spec.key;
     prototypes.set(spec.key, rig);
@@ -986,6 +1088,7 @@ export async function loadCast(): Promise<CastLibrary> {
     shotgun.scene,
     smg.scene,
     ...[...hairById.values()].map((gltf) => gltf.scene),
+    ...heroModels.map((gltf) => gltf.scene),
   ];
   return {
     prototypes,

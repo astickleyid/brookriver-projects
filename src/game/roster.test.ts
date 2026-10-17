@@ -1,12 +1,38 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import * as THREE from "three/webgpu";
 import { PLAYABLES, playableById, playableProfile } from "./roster.ts";
-import { coatHem, sculptBody, tailoredWardrobe } from "./roster-model.ts";
+import { sculptHead, isolateHead } from "./roster-model.ts";
 
-describe("playable cast", () => {
-  it("has six authored identities and safely recovers old or corrupt choices", () => {
-    assert.equal(PLAYABLES.length, 6);
+function glb(file: string) {
+  const bytes = readFileSync(file);
+  assert.equal(bytes.readUInt32LE(0), 0x46546c67);
+  assert.equal(bytes.readUInt32LE(4), 2);
+  const json = JSON.parse(bytes.subarray(20, 20 + bytes.readUInt32LE(12)).toString());
+  const offset = 20 + bytes.readUInt32LE(12) + 8,
+    binary = bytes.subarray(offset);
+  const values = (id: number) => {
+    const a = json.accessors[id],
+      v = json.bufferViews[a.bufferView],
+      width = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4, MAT4: 16 }[a.type as string]!;
+    const type = (
+      { 5121: Uint8Array, 5123: Uint16Array, 5125: Uint32Array, 5126: Float32Array } as Record<
+        number,
+        typeof Float32Array | typeof Uint8Array | typeof Uint16Array | typeof Uint32Array
+      >
+    )[a.componentType]!;
+    const copy = binary.subarray(
+      (v.byteOffset ?? 0) + (a.byteOffset ?? 0),
+      (v.byteOffset ?? 0) + (a.byteOffset ?? 0) + a.count * width * type.BYTES_PER_ELEMENT,
+    );
+    return new type(Uint8Array.from(copy).buffer);
+  };
+  return { json, values };
+}
+describe("playable arcade cast", () => {
+  it("has nine distinct identities, three new masculine options and safe save recovery", () => {
+    assert.equal(PLAYABLES.length, 9);
     for (const key of [
       "id",
       "name",
@@ -16,22 +42,27 @@ describe("playable cast", () => {
       "story",
       "body",
       "fashion",
-    ] as const) {
-      assert.equal(new Set(PLAYABLES.map((p) => p[key])).size, 6, key);
+      "asset",
+    ] as const)
+      assert.equal(new Set(PLAYABLES.map((p) => p[key])).size, 9, key);
+    for (const id of ["rhett", "cole", "briggs"]) {
+      const hero = playableById(id);
+      assert.equal(hero.id, id);
+      assert.equal(hero.sex, "m");
+      assert.ok(hero.shape.waist < hero.shape.chest);
     }
-    assert.equal(playableById("sana").id, "sana");
     for (const unknown of [null, undefined, "player-m", "__proto__", {}, 3])
-      assert.equal(playableById(unknown).id, "mara");
+      assert.equal(playableById(unknown).id, "rhett");
     const profile = playableProfile(PLAYABLES[0]!);
     profile.accessories.push("test");
     assert.ok(!PLAYABLES[0]!.profile.accessories.includes("test"));
   });
-  it("sculpts different body and face geometry while preserving animation weights", () => {
+  it("sculpts faces without modifying source geometry or animation weights", () => {
     const source = new THREE.BufferGeometry();
     source.setAttribute(
       "position",
       new THREE.Float32BufferAttribute(
-        [0.18, 1.09, 0.12, -0.18, 1.09, 0.12, 0.1, 1.62, 0.09, 0.02, 1.69, 0.12],
+        [0.1, 1.62, 0.09, 0.02, 1.69, 0.12, 0.09, 1.57, 0.09, 0.02, 1.64, 0.12],
         3,
       ),
     );
@@ -39,77 +70,26 @@ describe("playable cast", () => {
       "skinWeight",
       new THREE.Float32BufferAttribute([1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0], 4),
     );
-    const original = Array.from(source.getAttribute("position").array);
-    const bodies = PLAYABLES.map((hero) => sculptBody(source, hero));
+    const before = Array.from(source.getAttribute("position").array),
+      faces = PLAYABLES.map((hero) => sculptHead(source, hero));
     assert.equal(
-      new Set(bodies.map((geo) => Array.from(geo.getAttribute("position").array).join())).size,
-      6,
+      new Set(faces.map((g) => Array.from(g.getAttribute("position").array).join())).size,
+      9,
     );
-    assert.deepEqual(Array.from(source.getAttribute("position").array), original);
-    for (const geo of bodies) {
+    assert.deepEqual(Array.from(source.getAttribute("position").array), before);
+    for (const face of faces)
       assert.deepEqual(
-        Array.from(geo.getAttribute("skinWeight").array),
+        Array.from(face.getAttribute("skinWeight").array),
         Array.from(source.getAttribute("skinWeight").array),
       );
-      for (const n of geo.getAttribute("position").array) assert.ok(Number.isFinite(n));
-      geo.dispose();
-    }
-    source.dispose();
   });
-  it("keeps coat hems skinned and split for animated strides", () => {
-    const body = new THREE.SkinnedMesh(
-      new THREE.BufferGeometry(),
-      new THREE.MeshStandardMaterial(),
-    );
-    const bones = ["pelvis", "thigh_l", "thigh_r"].map((name) => {
-      const b = new THREE.Bone();
-      b.name = name;
-      return b;
-    });
-    body.bind(new THREE.Skeleton(bones));
-    const root = new THREE.Group();
-    root.add(body);
-    coatHem(body, PLAYABLES[0]!);
-    const hem = root.children[1] as THREE.SkinnedMesh;
-    assert.ok(hem.isSkinnedMesh);
-    assert.equal(hem.skeleton, body.skeleton);
-    const weights = hem.geometry.getAttribute("skinWeight");
-    for (let i = 0; i < weights.count; i++)
-      assert.ok(Math.abs(weights.getX(i) + weights.getY(i) - 1) < 1e-6);
-    assert.ok(weights.getY(weights.count - 1) > 0.7);
-    assert.ok(hem.geometry.getIndex()!.count < 7 * 32 * 6);
-  });
-  it("weights every tailored garment vertex and preserves only exposed body triangles", () => {
-    const names = [
-      "pelvis",
-      "spine_01",
-      "spine_02",
-      "spine_03",
-      "Head",
-      "upperarm_l",
-      "lowerarm_l",
-      "hand_l",
-      "upperarm_r",
-      "lowerarm_r",
-      "hand_r",
-      "thigh_l",
-      "calf_l",
-      "foot_l",
-      "thigh_r",
-      "calf_r",
-      "foot_r",
-    ];
-    const bones = names.map((name) => {
-      const bone = new THREE.Bone();
-      bone.name = name;
-      return bone;
-    });
+  it("excludes old shoulders at the same T-pose height as the retained head", () => {
     const source = new THREE.BufferGeometry();
     source.setAttribute(
       "position",
       new THREE.Float32BufferAttribute(
         [
-          0, 1.65, 0.1, 0.05, 1.66, 0.1, -0.05, 1.66, 0.1, 0, 1.2, 0.1, 0.05, 1.2, 0.1, -0.05, 1.2,
+          -0.08, 1.65, 0.08, 0.08, 1.65, 0.08, 0, 1.75, 0.08, 0.25, 1.6, 0, 0.35, 1.6, 0, 0.3, 1.55,
           0.1,
         ],
         3,
@@ -118,37 +98,78 @@ describe("playable cast", () => {
     source.setAttribute(
       "skinIndex",
       new THREE.Uint16BufferAttribute(
-        [4, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0],
         4,
       ),
     );
     source.setAttribute(
       "skinWeight",
       new THREE.Float32BufferAttribute(
-        Array.from({ length: 24 }, (_, i) => (i % 4 === 0 ? 1 : 0)),
+        [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
         4,
       ),
     );
     source.setIndex([0, 1, 2, 3, 4, 5]);
-    const body = new THREE.SkinnedMesh(source, new THREE.MeshStandardMaterial());
-    const root = new THREE.Group();
-    root.add(body, ...bones);
-    root.updateMatrixWorld(true);
-    body.bind(new THREE.Skeleton(bones));
-    const garment = tailoredWardrobe(body, PLAYABLES[0]!);
-    const geometry = garment.geometry;
-    assert.ok(geometry.getAttribute("position").count > 0);
-    assert.deepEqual(Array.from(source.getIndex()!.array), [0, 1, 2]);
-    const w = geometry.getAttribute("skinWeight"),
-      j = geometry.getAttribute("skinIndex");
-    for (let i = 0; i < w.count; i++) {
-      assert.ok(Math.abs(w.getX(i) + w.getY(i) + w.getZ(i) + w.getW(i) - 1) < 1e-6);
-      for (let c = 0; c < 4; c++) {
-        assert.ok(w.getComponent(i, c) >= 0);
-        assert.ok(j.getComponent(i, c) < bones.length);
+    const head = isolateHead(source, ["Head", "neck_01", "upperarm_l"], playableById("rhett"));
+    assert.deepEqual(Array.from(head.getIndex()!.array), [0, 1, 2]);
+    assert.equal(source.getIndex()!.count, 6);
+  });
+  it("ships real, bounded, weighted clothes and graphics on the original animation skeleton", () => {
+    const manifest = JSON.parse(readFileSync("public/models/cast/manifest.json", "utf8"));
+    assert.equal(manifest.characters.length, 9);
+    for (const hero of PLAYABLES) {
+      const { json, values } = glb(`public${hero.asset}`),
+        skin = json.skins[0],
+        names = skin.joints.map((i: number) => json.nodes[i].name);
+      for (const name of [
+        "Head",
+        "pelvis",
+        "spine_03",
+        "hand_r",
+        "thigh_l",
+        "foot_r",
+        "index_01_r",
+      ])
+        assert.ok(names.includes(name), `${hero.id}: ${name}`);
+      assert.ok(json.nodes.some((n: { name: string }) => n.name.endsWith(":graphic")));
+      const primitive = json.meshes[0].primitives[0],
+        positions = values(primitive.attributes.POSITION),
+        weights = values(primitive.attributes.WEIGHTS_0),
+        joints = values(primitive.attributes.JOINTS_0);
+      assert.ok(positions.length > 3000 && positions.length < 90000);
+      for (let i = 0; i < weights.length; i += 4) {
+        assert.ok(
+          Math.abs(weights[i]! + weights[i + 1]! + weights[i + 2]! + weights[i + 3]! - 1) < 1e-5,
+        );
+        for (let c = 0; c < 4; c++) {
+          assert.ok(joints[i + c]! < names.length);
+          assert.ok(weights[i + c]! >= 0);
+        }
+      }
+      for (const value of positions) assert.ok(Number.isFinite(value));
+      const positionAccessor = json.accessors[primitive.attributes.POSITION];
+      assert.ok(positionAccessor.min[1] > -0.12);
+      assert.ok(positionAccessor.max[1] < 2.2);
+      assert.ok(
+        manifest.characters.find((p: { id: string }) => p.id === hero.id).triangles < 10000,
+      );
+    }
+  });
+  it("keeps bind bone rotations identical to the source animation rig", () => {
+    for (const hero of PLAYABLES) {
+      const { json } = glb(`public${hero.asset}`),
+        file = hero.sex === "m" ? "male/Superhero_Male" : "female/Superhero_Female";
+      const original = JSON.parse(
+        readFileSync(
+          `public/vendor/quaternius/universal-base-characters/${file}_FullBody.gltf`,
+          "utf8",
+        ),
+      );
+      for (const name of ["Head", "pelvis", "spine_03", "upperarm_l", "hand_r", "foot_l"]) {
+        const actual = json.nodes.find((n: { name: string }) => n.name === name),
+          expected = original.nodes.find((n: { name: string }) => n.name === name);
+        assert.deepEqual(actual.rotation, expected.rotation, `${hero.id}: ${name}`);
       }
     }
-    for (const value of geometry.getAttribute("position").array) assert.ok(Number.isFinite(value));
-    assert.equal(garment.skeleton, body.skeleton);
   });
 });

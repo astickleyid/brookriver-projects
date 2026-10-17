@@ -3,9 +3,7 @@ import { Star } from "lucide-react";
 import { DeskHost } from "@/components/desk/host";
 import type { UiCmd } from "@/game/desk";
 import type { GameHandle, HudSnapshot, TouchInput } from "@/game/create-game";
-import { ledgerLines } from "@/game/economy";
-
-const LEDGER = ledgerLines();
+import { CharacterSelection } from "@/components/character-selection";
 
 const EMPTY: HudSnapshot = {
   phase: "menu",
@@ -39,6 +37,8 @@ const EMPTY: HudSnapshot = {
   nearTeller: false,
   assets: "",
   portfolio: "",
+  character: "mara",
+  characterReady: false,
   pauseSel: 0,
   desk: null,
   navSeq: 0,
@@ -179,7 +179,7 @@ export function BrookriverApp() {
               {hud.loot > 0 ? <p className="text-xs text-amber">Goods ${hud.loot.toLocaleString("en-US")}</p> : null}
               {hud.assets ? <p className="text-xs leading-tight text-muted">{hud.assets}</p> : null}
               <div className="pointer-events-auto mt-2 flex flex-col items-end">
-                {hud.stations.map((station, index) => (
+                {hud.stations.map((station, index) => (touchUi && !station.active ? null : (
                   <button
                     key={station.name}
                     type="button"
@@ -188,7 +188,7 @@ export function BrookriverApp() {
                   >
                     {station.name}
                   </button>
-                ))}
+                )))}
               </div>
             </div>
           </div>
@@ -210,7 +210,7 @@ export function BrookriverApp() {
               </p>
             ) : null}
             {hud.shop && !hud.desk ? <p className="max-w-md text-center text-xs text-amber">{hud.shop}</p> : null}
-            {!hud.looking && !hud.pad ? <p className="text-center text-xs text-amber">{hud.padStatus}</p> : null}
+            {!touchUi && !hud.looking && !hud.pad ? <p className="text-center text-xs text-amber">{hud.padStatus}</p> : null}
             {hud.pad && !hud.looking ? (
               <p className="text-center text-xs tracking-wide text-muted">
                 {hud.driving
@@ -228,49 +228,9 @@ export function BrookriverApp() {
       ) : null}
 
       {phase === "menu" ? (
-        <div className="scrim-bottom absolute inset-0 z-20 flex flex-col justify-end p-4 safe-b sm:p-8">
-          <div className="max-w-xl border-l-2 border-amber pl-4">
-            <p className="text-xs tracking-widest text-amber">WARD 04 · NIGHT OPEN</p>
-            <h1 className="font-display text-6xl leading-none text-fg sm:text-8xl">BROOKRIVER</h1>
-            <p className="mt-2 max-w-md text-sm text-muted sm:text-lg">
-              The wallet is what the street can take. The bank keeps the rest. The plaza fixer sells the city off the same scale.
-            </p>
-            <ul className="mt-3 hidden max-w-md grid-cols-2 gap-x-3 gap-y-1 text-xs text-muted sm:grid">
-              {LEDGER.map((row) => (
-                <li key={row.id} className="flex items-baseline justify-between gap-2">
-                  <span>
-                    {row.name} <span className="text-fg">{row.risk}</span>
-                  </span>
-                  <span className="text-amber">{row.pay}</span>
-                </li>
-              ))}
-            </ul>
-            <p className="mt-3 max-w-sm text-xs text-muted sm:hidden">
-              {LEDGER.map((row) => `${row.name} ${row.pay}`).join(" · ")}. Plaza fixer takes the big checks.
-            </p>
-            <div className="mt-4 flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                onClick={start}
-                className="min-h-12 bg-amber px-8 font-display text-3xl leading-none tracking-wide text-bg"
-              >
-                Start
-              </button>
-              <p className="text-sm text-muted">{booted ? "Night is live." : "Wiring the blocks…"}</p>
-            </div>
-            <p className="mt-4 text-sm text-amber">{hud.padStatus}</p>
-            <p className="mt-2 text-sm text-muted">
-              {hud.pad
-                ? "Left stick moves. Right stick looks. RT drives. On foot, LT aims and RT shoots."
-                : touchUi
-                  ? "Left stick drives. Work shows up on a mark, a door, the bank, or the plaza fixer."
-                  : "You start with $40. Click the city to look. White post is the bank. The plaza fixer sells a house, a shop, or a car. F walks through a door you can enter."}
-            </p>
-            {hud.bank > 0 ? <p className="mt-2 text-sm text-fg">Bank ${hud.bank.toLocaleString("en-US")}</p> : null}
-            {hud.best > 0 ? <p className="mt-2 text-sm text-amber">Best net ${hud.best.toLocaleString("en-US")}</p> : null}
-            {hud.error ? <p className="mt-2 text-sm text-blood">{hud.error}</p> : null}
-          </div>
-        </div>
+        <CharacterSelection selected={hud.character} ready={booted && hud.characterReady} error={hud.error}
+          onSelect={(id) => gameRef.current?.selectCharacter(id)} onStart={start}
+          onPreview={(action) => gameRef.current?.previewCharacter(action)} />
       ) : null}
 
       {phase === "pause" ? (

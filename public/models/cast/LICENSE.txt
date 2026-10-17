@@ -1,0 +1,9 @@
+Brookriver arcade cast assets
+
+Derived from Quaternius Ultimate Modular Men, Ultimate Modular Women, and Universal Base Characters, distributed under CC0 (Public Domain). Original source files and licenses are retained in public/vendor/quaternius/.
+
+Body/wardrobe geometry comes from the authored modular asset meshes. The build script fits their anatomical proportions and weights to the original Universal skeleton, adds Brookriver vertex color treatments and skinned print surfaces, and removes the stock block faces. Detailed source heads and fitted accessories are attached by the game at runtime.
+
+Rebuild: npm run assets:cast
+Pipeline: scripts/build-arcade-cast.mjs
+Manifest: manifest.json

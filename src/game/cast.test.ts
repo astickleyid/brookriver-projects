@@ -6,6 +6,8 @@ import {
   actorKey,
   chooseClip,
   clipPace,
+  locomotionPose,
+  appearanceFor,
   hopVelocity,
   sirenThreat,
   stepHop,
@@ -143,12 +145,12 @@ describe("cast roster", () => {
     assert.equal(amber.size, 4);
     assert.equal(teal.size, 4);
     assert.ok(cops.size >= 3);
-    assert.equal(actorKey("player", 3), "player-m");
+    assert.equal(actorKey("player", 3), "player-mara");
     const outfits = new Set(Array.from({ length: 40 }, (_, i) => actorCut(actorKey("civ", i))));
     assert.ok(outfits.has("hoodie"));
     assert.ok(outfits.has("suit"));
     assert.ok(outfits.has("worker"));
-    assert.equal(actorCut("player-m"), "hoodie");
+    assert.equal(actorCut("player-rafa"), "worker");
     assert.equal(actorCut("cop-m"), "uniform");
     assert.equal(actorCut("civ-f-tee-a"), "tee");
     for (const key of civ) assert.equal(key.includes("peasant") || key.includes("ranger"), false);
@@ -216,8 +218,8 @@ describe("travel and hop", () => {
     assert.ok(Math.abs(Math.abs(back) - Math.PI) < 1e-6);
   });
 
-  it("keeps a forward cycle off the aim pose when backing up", () => {
-    assert.equal(clipPace(0, 1, 0, true), 0);
+  it("keeps aimed movement animated in every direction", () => {
+    assert.equal(clipPace(0, 1, 0, true), 1);
     assert.ok(clipPace(0, -4, 0, true) > 3);
     assert.ok(clipPace(0, 4, 0, false) > 3);
   });
@@ -283,5 +285,33 @@ describe("lockInPlace", () => {
     const death = lockInPlace(walk, true);
     assert.ok(Math.abs(death.tracks[0]!.values[3]! - 0.4) < 1e-5);
     assert.ok(Math.abs(death.tracks[1]!.values[4]! - 0.2) < 1e-5);
+  });
+});
+
+
+describe("directional action matching", () => {
+  it("backpedals with forward-facing hips and turns hips for strafing", () => {
+    const back = locomotionPose(0, 4, 0);
+    assert.equal(back.reverseStride, true);
+    assert.ok(Math.abs(back.legYaw) < 1e-6);
+    assert.ok(locomotionPose(4, 0, 0).legYaw < -1.5);
+    assert.ok(locomotionPose(-4, 0, 0).legYaw > 1.5);
+    assert.deepEqual(locomotionPose(0, 0, 2), { legYaw: 0, reverseStride: false });
+  });
+  it("keeps legs moving during reload and moving combat", () => {
+    const reload = chooseClip({ ...idle, speed: 4, armed: true, reloading: true });
+    assert.equal(reload.name, "Jog_Fwd_Loop__legs");
+    assert.equal(reload.arms, "Pistol_Reload__arms");
+    const fight = chooseClip({ ...idle, speed: 2, armed: true, fighting: true });
+    assert.equal(fight.name, "Walk_Loop__legs");
+    assert.equal(fight.arms, "Pistol_Aim_Neutral__arms");
+  });
+  it("has stable independent body and skin variation", () => {
+    const keys = Array.from({ length: 20 }, (_, i) => actorKey("civ", i));
+    const looks = keys.map(appearanceFor);
+    assert.ok(new Set(looks.map((v) => v.height)).size >= 5);
+    assert.ok(new Set(looks.map((v) => v.width)).size >= 5);
+    assert.ok(new Set(looks.map((v) => v.skin.join())).size >= 4);
+    assert.deepEqual(appearanceFor(keys[0]!), appearanceFor(keys[0]!));
   });
 });

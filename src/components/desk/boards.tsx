@@ -429,7 +429,8 @@ export function JobsBoard({ desk, send }: { desk: Extract<Desk, { kind: "jobs" }
 export function MugBoard({ desk, send }: { desk: Extract<Desk, { kind: "mug" }>; send: (cmd: UiCmd) => void }) {
   const job = desk.job;
   return (
-    <Dock kicker="CLOSE" title={job.name}>
+    <Dock kicker={desk.resident?.role ?? "CLOSE"} title={desk.resident?.name ?? job.name}>
+      {desk.resident ? <p className="mb-3 text-sm text-muted">{desk.resident.manner}</p> : null}
       <div className="flex max-w-md flex-col gap-3">
         <p className="font-display text-6xl leading-none text-amber">{job.pay}</p>
         <p className="text-sm text-muted">{job.detail}</p>
@@ -439,7 +440,7 @@ export function MugBoard({ desk, send }: { desk: Extract<Desk, { kind: "mug" }>;
           <span className="text-blood">{Math.round(job.fail * 100)}% bust</span>
         </p>
         <DeskButton tone="amber" onClick={() => send({ op: "hustle", id: job.id })}>
-          Do it
+          {job.name}
         </DeskButton>
       </div>
     </Dock>

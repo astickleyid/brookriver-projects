@@ -1,4 +1,5 @@
 import * as THREE from "three/webgpu";
+import { characterProfile, dressCharacter, type CharacterProfile } from "./wardrobe.ts";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { clone as cloneSkinned } from "three/addons/utils/SkeletonUtils.js";
 
@@ -67,6 +68,9 @@ export type ClipQuery = {
   air?: "none" | "up" | "hang" | "land";
   /** Caller hysteresis. Omitted keeps the old speed > 0.35 walk split. */
   moving?: boolean;
+  /** Lower-body travel direction relative to the aiming torso. */
+  legYaw?: number;
+  reverseStride?: boolean;
 };
 
 const CLIP_NAMES = [
@@ -171,15 +175,20 @@ export function travelYaw(vx: number, vz: number) {
   return Math.atan2(-vx, -vz);
 }
 
-/**
- * Clip speed. Off aim, the body faces travel, so the full pace is a forward cycle.
- * On aim, only movement along the look plays a walk. Backpedal and strafe hold the aim pose.
- */
-export function clipPace(vx: number, vz: number, yaw: number, aim: boolean) {
-  const pace = Math.hypot(vx, vz);
-  if (!aim) return pace;
-  const along = vx * -Math.sin(yaw) + vz * -Math.cos(yaw);
-  return along > 0.25 ? along : 0;
+/** Keep feet cycling for every travel direction, including aimed backpedal. */
+export function clipPace(vx: number, vz: number, _yaw: number, _aim: boolean) {
+  return Math.hypot(vx, vz);
+}
+
+/** Aim remains on the target while the hips follow travel. Backpedal reverses
+ * the cycle instead of turning the knees all the way around. */
+export function locomotionPose(vx: number, vz: number, yaw: number) {
+  if (Math.hypot(vx, vz) < 0.1) return { legYaw: 0, reverseStride: false };
+  const delta = travelYaw(vx, vz) - yaw;
+  const angle = Math.atan2(Math.sin(delta), Math.cos(delta));
+  const reverseStride = Math.abs(angle) > Math.PI * 0.6;
+  const legYaw = reverseStride ? angle - Math.sign(angle) * Math.PI : angle;
+  return { legYaw, reverseStride };
 }
 
 const HOP_GRAVITY = 22;
@@ -218,6 +227,7 @@ function aimName(q: ClipQuery) {
 }
 
 function footName(q: ClipQuery) {
+  if (q.speed > 6.2) return "Sprint_Loop";
   if (q.speed > 3.1) return "Jog_Fwd_Loop";
   if (q.beat === "carry") return "Walk_Carry_Loop";
   if (q.beat === "talk" || q.beat === "phone") return "Walk_Formal_Loop";
@@ -225,8 +235,8 @@ function footName(q: ClipQuery) {
 }
 
 function onFootMoving(q: ClipQuery) {
-  if (q.moving === undefined) return q.speed > 0.35 && q.speed <= 6.2;
-  return q.moving && q.speed > 0.05 && q.speed <= 6.2;
+  if (q.moving === undefined) return q.speed > 0.35;
+  return q.moving && q.speed > 0.05;
 }
 
 function armedOnFoot(q: ClipQuery, arms: string, armsOnce = false): ClipChoice {
@@ -245,7 +255,7 @@ export function chooseClip(q: ClipQuery): ClipChoice {
   if (q.melee === "jab") return { name: "Punch_Jab", once: true };
   if (q.melee === "shove") return { name: "Push_Loop", once: true };
   const act = gunAct(q);
-  if (q.reloading && q.armed) return { name: act.reload, once: true };
+  if (q.reloading && q.armed) return armedOnFoot(q, act.reload, true);
   if (q.shooting && q.armed) return armedOnFoot(q, act.shoot, true);
   if (q.air === "up") return { name: "Jump_Start", once: true };
   if (q.air === "land") return { name: "Jump_Land", once: true };
@@ -255,7 +265,7 @@ export function chooseClip(q: ClipQuery): ClipChoice {
     if (q.speed > 2.2) return { name: "Roll", once: true };
     return { name: q.speed > 0.8 ? "Crouch_Fwd_Loop" : "Crouch_Idle_Loop", once: false };
   }
-  if (q.fighting && q.armed) return { name: act.aim, once: false };
+  if (q.fighting && q.armed) return armedOnFoot(q, act.aim);
   if (q.speed > 6.2) return { name: "Sprint_Loop", once: false };
   if (onFootMoving(q)) {
     if (q.armed) return { name: legsClip(footName(q)), once: false, arms: armsClip(act.idle) };
@@ -378,6 +388,19 @@ const PROTOS: ProtoSpec[] = [
   { key: "player-m", sex: "m", outfit: "hoodie", hair: "parted", hairTint: HAIR.dark },
 ];
 
+export function appearanceFor(key: string) {
+  let hash = 2166136261;
+  for (const c of key) hash = Math.imul(hash ^ c.charCodeAt(0), 16777619) >>> 0;
+  const skins = [[0.68, 0.49, 0.36], [0.88, 0.73, 0.59], [1.08, 0.99, 0.88], [0.49, 0.34, 0.26], [0.94, 0.83, 0.7]];
+  const fabric = key.startsWith("amber") ? [0xc7863f, 0x98632e] : key.startsWith("teal") ? [0x378b84, 0x275d68] : key.startsWith("cop") ? [0x293c58, 0x334963] : [0x697b68, 0x9c5950, 0x657b94, 0xb39b72, 0x7b657f, 0x495963];
+  return {
+    height: key === "player-m" ? 1 : 0.93 + (hash % 9) * 0.018,
+    width: key === "player-m" ? 1 : 0.91 + ((hash >>> 4) % 8) * 0.026,
+    skin: skins[(hash >>> 8) % skins.length]!,
+    fabric: fabric[(hash >>> 16) % fabric.length]!,
+  };
+}
+
 const CIV_KEYS = PROTOS.filter((spec) => spec.key.startsWith("civ-")).map((spec) => spec.key);
 const AMBER_KEYS = PROTOS.filter((spec) => spec.key.startsWith("amber-")).map((spec) => spec.key);
 const TEAL_KEYS = PROTOS.filter((spec) => spec.key.startsWith("teal-")).map((spec) => spec.key);
@@ -422,6 +445,10 @@ export type Actor = {
   playing: THREE.AnimationAction | null;
   overlay: THREE.AnimationAction | null;
   kick: THREE.Group | null;
+  pelvis: THREE.Object3D | undefined;
+  spine: THREE.Object3D | undefined;
+  legTurn: number;
+  profile: CharacterProfile;
 };
 
 let actorSerial = 0;
@@ -444,7 +471,7 @@ const FALL_CLIPS = new Set(["Death01", "Hit_Chest", "Hit_Head", "Hit_Knockback"]
 
 const ARM_BONE = /^(clavicle_|upperarm_|lowerarm_|hand_|index_|middle_|ring_|pinky_|thumb_)/;
 const PISTOL_SOURCE = ["Pistol_Idle_Loop", "Pistol_Aim_Down", "Pistol_Aim_Neutral", "Pistol_Aim_Up", "Pistol_Reload", "Pistol_Shoot"] as const;
-const LEG_SOURCE = ["Walk_Loop", "Walk_Formal_Loop", "Walk_Carry_Loop", "Jog_Fwd_Loop"] as const;
+const LEG_SOURCE = ["Walk_Loop", "Walk_Formal_Loop", "Walk_Carry_Loop", "Jog_Fwd_Loop", "Sprint_Loop"] as const;
 
 function trackBone(name: string) {
   const dot = name.indexOf(".");
@@ -480,7 +507,6 @@ function addGunClips(clips: Map<string, THREE.AnimationClip>) {
     for (const gun of ["Shotgun", "SMG"] as const) {
       clips.set(rename(source, gun), cloneClip(clip, rename(source, gun)));
     }
-    if (source === "Pistol_Reload") continue;
     for (const name of [source, rename(source, "Shotgun"), rename(source, "SMG")]) {
       const posed = clips.get(name);
       if (!posed) throw new Error(`cast missing clip ${name}`);
@@ -548,6 +574,42 @@ function loadMap(url: string, colorSpace: THREE.ColorSpace) {
 }
 
 type LookMaps = { color: THREE.Texture; normal: THREE.Texture; rough: THREE.Texture };
+
+function pixelsOf(texture: THREE.Texture) {
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 512;
+  const ctx = canvas.getContext("2d")!;
+  ctx.drawImage(texture.image as CanvasImageSource, 0, 0, 512, 512);
+  return { canvas, ctx, pixels: ctx.getImageData(0, 0, 512, 512) };
+}
+
+function varyLook(look: LookMaps, reference: LookMaps, other: LookMaps, key: string): LookMaps {
+  const { canvas, ctx, pixels } = pixelsOf(look.color);
+  const a = pixelsOf(reference.color).pixels.data;
+  const b = pixelsOf(other.color).pixels.data;
+  const appearance = appearanceFor(key);
+  const color = new THREE.Color(appearance.fabric).convertLinearToSRGB();
+  const d = pixels.data;
+  const skinMask = new Uint8Array(512 * 512);
+  for (let i = 0; i < d.length; i += 4) {
+    const skin = Math.abs(a[i]! - b[i]!) + Math.abs(a[i + 1]! - b[i + 1]!) + Math.abs(a[i + 2]! - b[i + 2]!) < 18 && a[i]! > a[i + 1]! * 1.08 && a[i + 1]! > a[i + 2]! * 1.08;
+    skinMask[i / 4] = skin ? 1 : 0;
+    if (skin) {
+      for (let c = 0; c < 3; c++) d[i + c] = Math.min(255, d[i + c]! * appearance.skin[c]!);
+    } else if (d[i + 2]! > d[i]! * 1.05 && d[i + 2]! > 45 && d[i + 2]! < 190) {
+      const light = (d[i]! + d[i + 1]! + d[i + 2]!) / (3 * 95);
+      d[i] = Math.min(255, color.r * 160 * light);
+      d[i + 1] = Math.min(255, color.g * 160 * light);
+      d[i + 2] = Math.min(255, color.b * 160 * light);
+    }
+  }
+  ctx.putImageData(pixels, 0, 0);
+  const map = new THREE.CanvasTexture(canvas);
+  map.colorSpace = THREE.SRGBColorSpace;
+  map.flipY = look.color.flipY;
+  map.userData.skinMask = skinMask;
+  return { ...look, color: map };
+}
 
 function applyLook(root: THREE.Object3D, spec: ProtoSpec, look: LookMaps) {
   const hairTint = new THREE.Color(spec.hairTint);
@@ -633,6 +695,8 @@ function tuneAction(action: THREE.AnimationAction, gun: HeldGun) {
   if (name.includes("Shoot")) {
     // The muzzle rise sits about 0.15s into the clip. SMG shots are 0.08s apart, so the copy plays faster.
     action.timeScale = gun === "smg" ? 2.4 : 1;
+  } else if (name === "Punch_Jab" || name === "Punch_Cross" || name === "Push_Loop") {
+    action.timeScale = dur / (name === "Push_Loop" ? 0.52 : 0.4);
   } else if (name === "Jump_Start") {
     action.timeScale = Math.max(0.2, dur) / 0.28;
   } else if (name === "Jump_Land") {
@@ -659,17 +723,20 @@ function startLayer(actor: Actor, name: string, once: boolean, slot: "body" | "a
   action.reset();
   action.setLoop(loopOnce ? THREE.LoopOnce : THREE.LoopRepeat, loopOnce ? 1 : Infinity);
   action.clampWhenFinished = loopOnce;
-  action.fadeIn(FADE).play();
+  action.fadeIn(loopOnce ? 0.065 : FADE).play();
   if (!loopOnce) action.time = actor.phase * (action.getClip()?.duration ?? 1);
   if (slot === "body") actor.playing = action;
   else actor.overlay = action;
   return true;
 }
 
-export function createActor(lib: CastLibrary, key: string, gun: HeldGun | "all" | null): Actor {
+export function createActor(lib: CastLibrary, key: string, gun: HeldGun | "all" | null, residentIndex = 0): Actor {
   const proto = lib.prototypes.get(key);
   if (!proto) throw new Error(`missing cast prototype ${key}`);
   const rig = cloneSkinned(proto) as THREE.Object3D;
+  const profile = characterProfile(key, residentIndex);
+  dressCharacter(rig, profile);
+  lib.sources.push(rig);
   const mount = new THREE.Group();
   mount.name = "mount";
   mount.quaternion.copy(mountQuaternion());
@@ -677,6 +744,9 @@ export function createActor(lib: CastLibrary, key: string, gun: HeldGun | "all" 
   const root = new THREE.Group();
   root.name = key;
   root.add(mount);
+  const appearance = appearanceFor(key);
+  root.scale.set(appearance.width * profile.build, appearance.height * profile.height, appearance.width * profile.build);
+  root.userData.character = profile;
   const mixer = new THREE.AnimationMixer(rig);
   const actions = new Map<string, THREE.AnimationAction>();
   for (const [name, clip] of lib.clips) actions.set(name, mixer.clipAction(clip));
@@ -698,7 +768,7 @@ export function createActor(lib: CastLibrary, key: string, gun: HeldGun | "all" 
     hand.add(grip);
   }
   const phase = (actorSerial++ % 20) / 20;
-  return { root, mixer, actions, intent: "", shotSeen: -1, flinchSeen: -1, meleeSeen: -1, phase, playing: null, overlay: null, kick };
+  return { root, mixer, actions, intent: "", shotSeen: -1, flinchSeen: -1, meleeSeen: -1, phase, playing: null, overlay: null, kick, pelvis: rig.getObjectByName("pelvis"), spine: rig.getObjectByName("spine_01"), legTurn: 0, profile };
 }
 
 export function setHeldGun(actor: Actor, id: HeldGun) {
@@ -716,6 +786,9 @@ export function parkActor(actor: Actor) {
   actor.root.visible = false;
   actor.root.position.set(0, -10, 0);
 }
+
+const WORLD_UP = new THREE.Vector3(0, 1, 0);
+const spineWorld = new THREE.Quaternion(), hipWorld = new THREE.Quaternion(), parentWorld = new THREE.Quaternion(), turnQ = new THREE.Quaternion();
 
 const HIT_CLIPS = new Set(["Hit_Chest", "Hit_Head", "Hit_Knockback"]);
 const PUNCH_CLIPS = new Set(["Punch_Jab", "Punch_Cross", "Push_Loop"]);
@@ -775,11 +848,26 @@ export function updateActor(
     const name = action.getClip()?.name ?? "";
     if (name.includes("Shoot") || name.includes("Reload") || name.startsWith("Jump_")) return;
     const base = name.includes("Sprint") ? 7.2 : name.includes("Jog") ? 4.2 : name.includes("Walk") ? 1.6 : 0;
-    if (base > 0) action.timeScale = Math.min(1.35, Math.max(0.75, query.speed / base));
+    if (base > 0) action.timeScale = Math.min(1.65, Math.max(0.35, query.speed / (base * actor.profile.gait))) * (query.reverseStride ? -1 : 1);
   };
   paceRate(actor.playing);
   paceRate(actor.overlay);
   actor.mixer.update(dt);
+  // Preserve the animated torso in world space while turning only hips/legs.
+  // Bone-local axes differ from world up on this rig, so convert through parents.
+  const turn = choice.name.endsWith("__legs") ? (query.legYaw ?? 0) : 0;
+  actor.legTurn += (turn - actor.legTurn) * Math.min(1, dt * 18);
+  if (actor.pelvis?.parent && actor.spine?.parent && Math.abs(actor.legTurn) > 0.001) {
+    actor.root.updateMatrixWorld(true);
+    actor.spine.getWorldQuaternion(spineWorld);
+    actor.pelvis.getWorldQuaternion(hipWorld);
+    hipWorld.premultiply(turnQ.setFromAxisAngle(WORLD_UP, actor.legTurn));
+    actor.pelvis.parent.getWorldQuaternion(parentWorld);
+    actor.pelvis.quaternion.copy(parentWorld.invert()).multiply(hipWorld);
+    actor.pelvis.updateMatrixWorld(true);
+    actor.spine.parent.getWorldQuaternion(parentWorld);
+    actor.spine.quaternion.copy(parentWorld.invert()).multiply(spineWorld);
+  }
   if (actor.kick) {
     actor.kick.visible = query.melee === undefined || query.melee === "none";
     // Barrel is grip −Y, so recoil travels +Y, back into the hand.
@@ -868,10 +956,12 @@ export async function loadCast(): Promise<CastLibrary> {
     }
     const look = looks.get(`${spec.sex}-${spec.outfit}`);
     if (!look) throw new Error(`missing outfit ${spec.sex}-${spec.outfit}`);
-    applyLook(rig, spec, look);
+    const varied = varyLook(look, looks.get(`${spec.sex}-tee`)!, looks.get(`${spec.sex}-hoodie`)!, spec.key);
+    applyLook(rig, spec, varied);
     rig.name = spec.key;
     prototypes.set(spec.key, rig);
   }
+  for (const look of looks.values()) look.color.dispose();
   const clips = new Map<string, THREE.AnimationClip>();
   for (const gltf of [ual1, ual2]) {
     for (const clip of gltf.animations) {

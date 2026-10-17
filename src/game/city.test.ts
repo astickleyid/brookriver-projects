@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import * as THREE from "three/webgpu";
-import { DISTRICT, districtLook, groundY, layoutDistrict, lotMasses, type BKind, type BlockBox, type Face, type Placement, type Spec } from "./city.ts";
+import { BUILDING_SPECS, buildingBounds, districtColliders, drapeRoad, terrainY, DISTRICT, districtLook, groundY, layoutDistrict, lotMasses, type BKind, type BlockBox, type Face, type Placement, type Spec } from "./city.ts";
 
 const specs: Record<BKind, Spec> = {
   large: { width: 20.64, depth: 16.64 },
@@ -180,5 +180,45 @@ describe("district layout", () => {
     const street = placed.find((p) => p.kind === "street");
     assert.ok(street);
     assert.ok(Math.abs(street.y - (groundY(street.x, street.z) + 0.17)) < 1e-6);
+  });
+});
+
+
+describe("playable city geometry", () => {
+  it("uses the rendered footprints as collision and minimap buildings", () => {
+    const placed = layoutDistrict(BUILDING_SPECS).filter((p) => p.face);
+    const solid = districtColliders().filter((b) => b.h > 2);
+    assert.equal(solid.length, placed.length);
+    for (let i = 0; i < placed.length; i++) assert.deepEqual(solid[i], buildingBounds(placed[i]!));
+    const old = lotMasses().filter((b) => b.h > 2);
+    assert.ok(solid.length > old.length, "every separated front has its own collider");
+  });
+  it("drapes every road vertex onto the continuous terrain grade", () => {
+    const source = new THREE.PlaneGeometry(6, 18, 4, 4);
+    source.rotateX(-Math.PI / 2);
+    for (const item of layoutDistrict(BUILDING_SPECS).filter((p) => p.kind === "street").slice(0, 20)) {
+      const geo = drapeRoad(source, item);
+      const pos = geo.getAttribute("position");
+      for (let i = 0; i < pos.count; i++) {
+        assert.ok(Math.abs(pos.getY(i) - terrainY(pos.getX(i), pos.getZ(i)) - 0.17) < 1e-5);
+      }
+      geo.dispose();
+    }
+    source.dispose();
+  });
+  it("has no height snaps where nearest-road and lot regions meet", () => {
+    let worst = 0;
+    for (let x = -130; x < 130; x += 1) {
+      for (let z = -130; z < 130; z += 1) {
+        worst = Math.max(worst, Math.abs(groundY(x + 0.01, z) - groundY(x, z)), Math.abs(groundY(x, z + 0.01) - groundY(x, z)));
+      }
+    }
+    assert.ok(worst < 0.025, `centimeter sample changed by ${worst}m`);
+  });
+  it("puts the complete outer roadway inside visible perimeter collision", () => {
+    const edges = districtColliders().filter((b) => b.h === 1.1);
+    assert.equal(edges.length, 4);
+    assert.ok(edges.some((b) => b.minX === 134));
+    assert.ok(edges.some((b) => b.maxX === -134));
   });
 });

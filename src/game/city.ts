@@ -1,4 +1,5 @@
 import * as THREE from "three/webgpu";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
 /**
@@ -21,7 +22,15 @@ const LIFT = 0.17;
 
 export type BKind = "large" | "medium" | "small";
 export type Face = "west" | "east" | "north" | "south";
-export type Spec = { width: number; depth: number };
+export type Spec = { width: number; depth: number; height?: number };
+
+// Measured from the shipped glTF scene bounds. Rendering, collision and the map
+// all consume this layout; asset replacements must update these measurements.
+export const BUILDING_SPECS: Record<BKind, Spec> = {
+  large: { width: 20.64410972595215, depth: 16.644596099853516, height: 28.000038146972656 },
+  medium: { width: 15.055683135986328, depth: 13.055681586265564, height: 25.00865962356329 },
+  small: { width: 12.460000991821289, depth: 14.536008358001709, height: 17.025969891808927 },
+};
 export type Placement = {
   kind: BKind | "street" | "cross";
   x: number;
@@ -201,56 +210,60 @@ function terrace(x: number, z: number) {
   return 0.5 + n * 1.25 + bluff;
 }
 
-let massGrid: BlockBox[][] | null = null;
-
-function massesInCell(x: number, z: number): BlockBox[] {
-  if (!massGrid) {
-    const cells: BlockBox[][] = Array.from({ length: DISTRICT.grid * DISTRICT.grid }, () => []);
-    const half = (DISTRICT.grid * DISTRICT.cell) / 2;
-    for (const b of lotMasses()) {
-      if (b.h <= 2) continue;
-      const cx = (b.minX + b.maxX) / 2;
-      const cz = (b.minZ + b.maxZ) / 2;
-      const gx = Math.min(DISTRICT.grid - 1, Math.max(0, Math.floor((cx + half) / DISTRICT.cell)));
-      const gz = Math.min(DISTRICT.grid - 1, Math.max(0, Math.floor((cz + half) / DISTRICT.cell)));
-      cells[gz * DISTRICT.grid + gx]!.push(b);
-    }
-    massGrid = cells;
-  }
-  const half = (DISTRICT.grid * DISTRICT.cell) / 2;
-  const gx = Math.floor((x + half) / DISTRICT.cell);
-  const gz = Math.floor((z + half) / DISTRICT.cell);
-  if (gx < 0 || gz < 0 || gx >= DISTRICT.grid || gz >= DISTRICT.grid) return [];
-  return massGrid[gz * DISTRICT.grid + gx]!;
-}
-
-function massAt(x: number, z: number): BlockBox | null {
-  for (const b of massesInCell(x, z)) {
-    if (x >= b.minX - 0.35 && x <= b.maxX + 0.35 && z >= b.minZ - 0.35 && z <= b.maxZ + 0.35) return b;
-  }
-  return null;
-}
-
-/**
- * One height for the mesh, the cars, and the people.
- * Asphalt follows the shelf. A lot is a flat pad above that shelf.
- * The hall and the rooms sit outside the district and stay at 0.
+/** Continuous street grade, blended gently onto the district terraces.
+ * No nearest-road projection or mass-edge snap: both introduced visible steps.
  */
+export function terrainY(x: number, z: number): number {
+  if (Math.abs(x) > CITY_EDGE || Math.abs(z) > CITY_EDGE) return 0;
+  const lane = 9.4;
+  const blend = smooth(lane, lane + 5, roadGap(x, z).dist);
+  return shelfRaw(x, z) + terrace(x, z) * blend;
+}
+
+/** Asphalt is 2 cm over terrain; sidewalks are 15 cm higher. */
 export function groundY(x: number, z: number): number {
   if (Math.abs(x) > CITY_EDGE || Math.abs(z) > CITY_EDGE) return 0;
-  const gap = roadGap(x, z);
-  const roadH = shelfRaw(gap.sx, gap.sz);
-  // Street tiles are 18 m across, so the asphalt stays flat past the 16 m lane.
-  const lane = 9.4;
-  if (gap.dist <= lane) return roadH;
-  const mass = massAt(x, z);
-  if (mass) {
-    const cx = (mass.minX + mass.maxX) / 2;
-    const cz = (mass.minZ + mass.maxZ) / 2;
-    return shelfRaw(cx, cz) + terrace(cx, cz);
-  }
-  const t = smooth(lane, lane + 1.15, gap.dist);
-  return roadH + (shelfRaw(x, z) + terrace(x, z) - roadH) * t;
+  const distance = roadGap(x, z).dist;
+  const sidewalk = smooth(5.95, 6.1, distance) * (1 - smooth(9, 10.4, distance));
+  return terrainY(x, z) + sidewalk * 0.15;
+}
+
+/** Bounds of the actual visible model, including its front stoop. */
+export function buildingBounds(p: Placement, specs = BUILDING_SPECS): BlockBox {
+  const spec = specs[p.kind as BKind];
+  const width = spec.width * p.sx;
+  const depth = spec.depth * p.sz;
+  const h = (spec.height ?? 24) * p.sy * districtLook(p.x, p.z, p.kind as BKind).height;
+  if (p.face === "west") return { minX: p.x, maxX: p.x + depth, minZ: p.z - width / 2, maxZ: p.z + width / 2, h };
+  if (p.face === "east") return { minX: p.x - depth, maxX: p.x, minZ: p.z - width / 2, maxZ: p.z + width / 2, h };
+  if (p.face === "south") return { minX: p.x - width / 2, maxX: p.x + width / 2, minZ: p.z, maxZ: p.z + depth, h };
+  return { minX: p.x - width / 2, maxX: p.x + width / 2, minZ: p.z - depth, maxZ: p.z, h };
+}
+
+export function districtColliders(): BlockBox[] {
+  const buildings = layoutDistrict(BUILDING_SPECS).filter((p) => p.face).map((p) => buildingBounds(p));
+  return [...buildings, ...lotMasses().filter((b) => b.h <= 2),
+    { minX: -135, maxX: -134, minZ: -135, maxZ: 135, h: 1.1 },
+    { minX: 134, maxX: 135, minZ: -135, maxZ: 135, h: 1.1 },
+    { minX: -134, maxX: 134, minZ: -135, maxZ: -134, h: 1.1 },
+    { minX: -134, maxX: 134, minZ: 134, maxZ: 135, h: 1.1 },
+  ];
+}
+
+/** World-space road geometry: every shared edge samples the same ground height. */
+export function drapeRoad(source: THREE.BufferGeometry, item: Placement): THREE.BufferGeometry {
+  const geo = source.clone();
+  const matrix = new THREE.Matrix4().compose(
+    new THREE.Vector3(item.x, LIFT, item.z),
+    new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), item.yaw),
+    new THREE.Vector3(item.sx, item.sy, item.sz),
+  );
+  geo.applyMatrix4(matrix);
+  const pos = geo.getAttribute("position");
+  for (let i = 0; i < pos.count; i++) pos.setY(i, pos.getY(i) + terrainY(pos.getX(i), pos.getZ(i)));
+  geo.computeVertexNormals();
+  geo.computeBoundingSphere();
+  return geo;
 }
 
 function frontFace(b: BlockBox, siblings: BlockBox[], frame: { cell: number; road: number; grid: number; shoulder: number }): Face {
@@ -428,13 +441,15 @@ export async function mountCity(
   for (const [key, root] of loaded) {
     baked.set(key, key === "street" || key === "cross" ? bakeRoad(root) : bakeBuilding(root));
   }
-  const specs = {
-    large: baked.get("large")!.spec,
-    medium: baked.get("medium")!.spec,
-    small: baked.get("small")!.spec,
-  };
+  const specs = BUILDING_SPECS;
+  for (const key of ["large", "medium", "small"] as const) {
+    const actual = baked.get(key)!.spec;
+    if (Math.abs(actual.width - specs[key].width) > 0.02 || Math.abs(actual.depth - specs[key].depth) > 0.02) {
+      throw new Error(`City asset dimensions changed: ${key}. Update BUILDING_SPECS before using this asset.`);
+    }
+  }
   const placements = layoutDistrict(specs, frame);
-  const meshes: THREE.InstancedMesh[] = [];
+  const meshes: THREE.Mesh[] = [];
   const geos = new Set<THREE.BufferGeometry>();
   const q = new THREE.Quaternion();
   const p = new THREE.Vector3();
@@ -443,7 +458,9 @@ export async function mountCity(
   const up = new THREE.Vector3(0, 1, 0);
   const place = (inst: THREE.InstancedMesh, item: Placement, height: number, i: number) => {
     q.setFromAxisAngle(up, item.yaw);
-    p.set(item.x, item.y, item.z);
+    const bounds = buildingBounds(item);
+    const baseY = groundY((bounds.minX + bounds.maxX) / 2, (bounds.minZ + bounds.maxZ) / 2);
+    p.set(item.x, LIFT + baseY, item.z);
     s.set(item.sx, item.sy * height, item.sz);
     inst.setMatrixAt(i, m.compose(p, q, s));
   };
@@ -453,15 +470,16 @@ export async function mountCity(
     const parts = baked.get(key)!.parts;
     if (key === "street" || key === "cross") {
       for (const part of parts) {
-        const inst = new THREE.InstancedMesh(part.geo, part.mat, group.length);
-        geos.add(part.geo);
-        inst.frustumCulled = false;
-        inst.castShadow = false;
-        inst.receiveShadow = qualityHigh;
-        group.forEach((item, i) => place(inst, item, 1, i));
-        inst.instanceMatrix.needsUpdate = true;
-        scene.add(inst);
-        meshes.push(inst);
+        const pieces = group.map((item) => drapeRoad(part.geo, item));
+        const geo = mergeGeometries(pieces);
+        for (const piece of pieces) piece.dispose();
+        part.geo.dispose();
+        if (!geo) throw new Error("Could not join city street geometry");
+        const road = new THREE.Mesh(geo, part.mat);
+        geos.add(geo);
+        road.receiveShadow = qualityHigh;
+        scene.add(road);
+        meshes.push(road);
       }
       continue;
     }
@@ -490,6 +508,39 @@ export async function mountCity(
     }
     for (const part of parts) part.mat.dispose();
   }
+  // A visible parapet explains the map boundary. Previously the outer road
+  // was cut in half by an invisible clamp four meters inside its centerline.
+  const edgeGeo = new THREE.BoxGeometry(1, 1, 1);
+  const edgeMat = new THREE.MeshStandardMaterial({ color: 0x7d807d, roughness: 0.88 });
+  const segments = 67;
+  const edge = new THREE.InstancedMesh(edgeGeo, edgeMat, segments * 4);
+  let edgeIndex = 0;
+  for (let side = 0; side < 4; side++) {
+    for (let n = 0; n < segments; n++) {
+      const at = -134 + (n + 0.5) * 4;
+      const x = side < 2 ? (side === 0 ? -134.5 : 134.5) : at;
+      const z = side >= 2 ? (side === 2 ? -134.5 : 134.5) : at;
+      edge.setMatrixAt(edgeIndex++, m.compose(p.set(x, groundY(x, z) + 0.55, z), q.identity(), s.set(side < 2 ? 1 : 4, 1.1, side < 2 ? 4 : 1)));
+    }
+  }
+  edge.receiveShadow = qualityHigh;
+  scene.add(edge); meshes.push(edge); geos.add(edgeGeo);
+
+  const foundations = placements.filter((item) => item.face);
+  const foundationGeo = new THREE.BoxGeometry(1, 1, 1);
+  const foundationMat = new THREE.MeshStandardMaterial({ color: 0x625e58, roughness: 0.96 });
+  const foundation = new THREE.InstancedMesh(foundationGeo, foundationMat, foundations.length);
+  foundations.forEach((item, i) => {
+    const b = buildingBounds(item);
+    const cx = (b.minX + b.maxX) / 2, cz = (b.minZ + b.maxZ) / 2;
+    const top = groundY(cx, cz) + LIFT;
+    const low = Math.min(...[[b.minX, b.minZ], [b.minX, b.maxZ], [b.maxX, b.minZ], [b.maxX, b.maxZ]].map(([x, z]) => groundY(x!, z!)), top) - 0.2;
+    foundation.setMatrixAt(i, m.compose(p.set(cx, (top + low) / 2, cz), q.identity(), s.set(b.maxX - b.minX, top - low, b.maxZ - b.minZ)));
+  });
+  foundation.receiveShadow = qualityHigh;
+  scene.add(foundation);
+  meshes.push(foundation);
+  geos.add(foundationGeo);
   return {
     dispose() {
       for (const mesh of meshes) {
@@ -552,15 +603,7 @@ export async function mountDressing(scene: THREE.Scene): Promise<CityHandle> {
   scene.add(root);
   const base = "/vendor/kaykit/city-builder-bits";
   const props: Array<{ file: string; x: number; z: number; yaw: number; s: number }> = [
-    { file: "building_A.gltf", x: -15, z: -15, yaw: 0.4, s: 2.45 },
-    { file: "building_C.gltf", x: -15, z: 14, yaw: 1.1, s: 2.35 },
-    { file: "building_E.gltf", x: -5, z: 15, yaw: 0.15, s: 2.4 },
-    { file: "building_G.gltf", x: 6, z: 15, yaw: -0.2, s: 2.3 },
-    { file: "building_B.gltf", x: 15, z: 8, yaw: Math.PI, s: 2.4 },
-    { file: "building_D.gltf", x: 15, z: -4, yaw: -1.4, s: 2.25 },
-    { file: "building_F.gltf", x: -15, z: 2, yaw: Math.PI / 2, s: 2.35 },
-    { file: "building_H.gltf", x: 2, z: -15, yaw: 0.8, s: 2.2 },
-    { file: "bench.gltf", x: -8, z: -15.5, yaw: 0.2, s: 6 },
+    { file: "bench.gltf", x: -8, z: -15.5, yaw: 0, s: 6 },
     { file: "bench.gltf", x: 8, z: 15.5, yaw: Math.PI, s: 6 },
     { file: "dumpster.gltf", x: -15.2, z: 6, yaw: 0.4, s: 5 },
     { file: "streetlight.gltf", x: -16.2, z: -6, yaw: 0, s: 3.6 },
@@ -568,9 +611,6 @@ export async function mountDressing(scene: THREE.Scene): Promise<CityHandle> {
     { file: "firehydrant.gltf", x: 12, z: 15.2, yaw: 0, s: 3.5 },
     { file: "bush.gltf", x: -12, z: 10, yaw: 0, s: 4 },
     { file: "bush.gltf", x: 10, z: -15, yaw: 1, s: 4 },
-    { file: "watertower.gltf", x: -6, z: -6, yaw: 0.4, s: 4.8 },
-    { file: "box_A.gltf", x: -10, z: -8, yaw: 0.6, s: 4.2 },
-    { file: "box_B.gltf", x: 4, z: -12, yaw: 1.2, s: 4 },
     { file: "trash_A.gltf", x: 14, z: 12, yaw: 0.3, s: 4.5 },
     { file: "trash_B.gltf", x: -8, z: 8, yaw: -0.4, s: 4.5 },
     { file: "trafficlight_A.gltf", x: -14, z: -14, yaw: 0.8, s: 4.2 },

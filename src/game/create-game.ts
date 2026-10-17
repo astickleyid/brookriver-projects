@@ -45,6 +45,7 @@ import {
   loadCast,
   parkActor,
   clipPace,
+  locomotionPose,
   hopVelocity,
   placeActor,
   setHeldGun,
@@ -59,7 +60,8 @@ import {
   type Melee,
   type ReactKind,
 } from "@/game/cast";
-import { groundY, lotMasses, mountCity, mountDressing, type CityHandle } from "@/game/city";
+import { groundY, districtColliders, mountCity, mountDressing, type CityHandle } from "@/game/city";
+import { characterProfile } from "./wardrobe.ts";
 import { bodyFor, loadFleet, type Fleet, type FleetBody } from "@/game/fleet";
 import { PED_GAP, PLAYER_BUBBLE, separateCrowd } from "@/game/crowd";
 import { HALL_ORIGIN, hallWalls, mountHall, type HallHandle } from "@/game/hall";
@@ -249,6 +251,7 @@ type Ped = {
   look: number;
   linger: number;
   lingerFor: number;
+  walkPace: number;
   shootPose: number;
   shotGen: number;
   flinch: number;
@@ -376,7 +379,7 @@ function rayAABB(
   let tmin = 0;
   let tmax = maxT;
   const pad = groundY((b.minX + b.maxX) / 2, (b.minZ + b.maxZ) / 2);
-  const min = [b.minX, 0, b.minZ];
+  const min = [b.minX, pad, b.minZ];
   const max = [b.maxX, b.h + pad, b.maxZ];
   const o = [ox, oy, oz];
   const d = [dx, dy, dz];
@@ -881,7 +884,7 @@ function buildBlocks(rand: () => number) {
       tall();
     }
   }
-  return lotMasses();
+  return districtColliders();
 }
 
 type ArchStyle = "brutal" | "brick" | "glass" | "deco" | "civic";
@@ -943,6 +946,14 @@ declare global {
       getPhase?: () => string;
       setKeys?: (codes: string[]) => void;
       setSteer?: (v: number) => void;
+    };
+    render_game_to_text?: () => string;
+    advanceTime?: (ms: number) => void;
+    __brookriverReview?: {
+      pose: (x: number, z: number, yaw?: number) => void;
+      camera: (x: number, y: number, z: number, tx: number, ty: number, tz: number) => void;
+      crowd: (start?: number) => void;
+      melee: () => void;
     };
     __brookriver?: {
       snap: () => {
@@ -1271,11 +1282,14 @@ export function createGame(
   let playerMelee = 0;
   let playerMeleeKind: Melee = "none";
   let playerMeleeGen = 0;
+  let playerContact = 0;
   let meleeCd = 0;
   let playerShotGen = 0;
   let castReady = false;
   let castLib: CastLibrary | null = null;
   let pedActors: Actor[] = [];
+  const actorAnimTime: number[] = [];
+  let animationFrame = 0;
   let playerActor: Actor | null = null;
   let radioTrack = 0;
   const radioOn = true;
@@ -1325,6 +1339,7 @@ export function createGame(
   const cars: Car[] = [];
   const peds: Ped[] = [];
   const living: Ped[] = [];
+  const meleeContacts = new Map<Ped, { left: number; victim: Ped | null; player: boolean }>();
   const pickups: Pickup[] = [];
   const shots: Shot[] = [];
 
@@ -1520,6 +1535,7 @@ export function createGame(
   const civColors = [0x6e8cae, 0xc46b4a, 0xd9c7a1, 0x4d6b52, 0x8a6070, 0xb9a15a];
   function addPed(x: number, z: number, faction: Faction, color: number, goals: Vec[]) {
     const look = peds.length;
+    const personality = characterProfile(actorKey(faction, look), look);
     peds.push({
       x,
       z,
@@ -1543,10 +1559,11 @@ export function createGame(
       er: false,
       settled: false,
       byPlayer: false,
-      beat: faction === "civ" ? STREET_BEATS[look % STREET_BEATS.length]! : BEATS[look % BEATS.length]!,
+      beat: faction === "civ" ? personality.idle : BEATS[look % BEATS.length]!,
       look,
       linger: 0,
-      lingerFor: 4 + rand() * 6,
+      lingerFor: (4 + rand() * 6) / personality.gait,
+      walkPace: 1.7 * personality.gait,
       shootPose: 0,
       shotGen: 0,
       flinch: 0,
@@ -1562,8 +1579,6 @@ export function createGame(
       fleeFor: 0,
     });
   }
-
-  const STREET_BEATS: Beat[] = ["talk", "phone", "idle", "lean", "carry"];
 
   for (let gx = 0; gx < GRID; gx++) {
     for (let gz = 0; gz < GRID; gz++) {
@@ -1674,9 +1689,9 @@ export function createGame(
 
   const camera = new THREE.PerspectiveCamera(68, 1, 0.1, 480);
 
-  const hemi = new THREE.HemisphereLight(0x9aa8e0, 0x3a2a22, 1.05);
+  const hemi = new THREE.HemisphereLight(0xb8c9e0, 0x625448, 1.6);
   scene.add(hemi);
-  const moon = new THREE.DirectionalLight(0xe4e6ff, 1.65);
+  const moon = new THREE.DirectionalLight(0xe4e6ff, 2.1);
   moon.position.set(-80, 140, -30);
   if (qualityHigh) {
     moon.castShadow = true;
@@ -1872,7 +1887,7 @@ export function createGame(
     const x = groundPos.getX(i);
     const z = groundPos.getZ(i);
     const y = groundY(x, z);
-    groundPos.setY(i, y);
+    groundPos.setY(i, y - 0.08);
     const t = Math.max(-1, Math.min(1, y / 6));
     groundCol[i * 3] = 0.94 + t * 0.06;
     groundCol[i * 3 + 1] = 0.95 + t * 0.03;
@@ -1895,6 +1910,16 @@ export function createGame(
   );
   ground.receiveShadow = qualityHigh;
   scene.add(ground);
+
+  const pavingGeo = new THREE.PlaneGeometry(34, 34, 34, 34);
+  pavingGeo.rotateX(-Math.PI / 2);
+  const pavingPos = pavingGeo.getAttribute("position");
+  for (let i = 0; i < pavingPos.count; i++) pavingPos.setY(i, groundY(pavingPos.getX(i), pavingPos.getZ(i)) + 0.025);
+  pavingGeo.computeVertexNormals();
+  const pavingMat = new THREE.MeshStandardMaterial({ color: 0x6e706b, roughness: 0.92, metalness: 0.02 });
+  const paving = new THREE.Mesh(pavingGeo, pavingMat);
+  paving.receiveShadow = qualityHigh;
+  scene.add(paving);
 
   const winTex = makeWindowTexture();
   const bMat = makeFacadeMaterial(winTex);
@@ -2940,7 +2965,7 @@ export function createGame(
       }
       castLib = lib;
       pedActors = peds.map((ped) => {
-        const actor = createActor(lib, actorKey(ped.faction, ped.look), gunFor(ped.faction, ped.look));
+        const actor = createActor(lib, actorKey(ped.faction, ped.look), gunFor(ped.faction, ped.look), ped.look);
         scene.add(actor.root);
         parkActor(actor);
         return actor;
@@ -3465,7 +3490,8 @@ export function createGame(
     if (!driving && spot) return jobsDesk(spot);
     if (!driving && nearestMug() >= 0) {
       const mug = hustleById("mug");
-      return mug ? { kind: "mug", job: jobCard(mug) } : null;
+      const person = pedActors[nearestMug()]?.profile;
+      return mug ? { kind: "mug", job: jobCard(mug), resident: person ? { name: person.name, role: person.role, manner: person.manner } : undefined } : null;
     }
     if (nearLot()) return { kind: "fixer", wallet: Math.floor(cash), where: "lot", items: fixerItems("lot") };
     return null;
@@ -5296,6 +5322,12 @@ export function createGame(
     playerMelee = kind === "shove" ? 0.52 : 0.4;
     playerMeleeGen++;
     meleeCd = 0.48;
+    playerContact = 0.16;
+  }
+
+  function playerMeleeContact() {
+    if (!alive || driving || phase !== "play" || playerFlinch > 0) return;
+    const kind = playerMeleeKind;
     const reach = kind === "shove" ? 1.95 : 1.65;
     const dmg = kind === "shove" ? 8 : kind === "cross" ? 22 : 16;
     const knock = kind === "shove" ? 1.45 : kind === "cross" ? 0.7 : 0.4;
@@ -5369,20 +5401,21 @@ export function createGame(
         hit = hit || p.hit;
       }
     }
-    if (x < -HALF + 4) {
-      x = -HALF + 4;
+    const edgeLimit = HALF + 9 - r;
+    if (x < -edgeLimit) {
+      x = -edgeLimit;
       hit = true;
     }
-    if (x > HALF - 4) {
-      x = HALF - 4;
+    if (x > edgeLimit) {
+      x = edgeLimit;
       hit = true;
     }
-    if (z < -HALF + 4) {
-      z = -HALF + 4;
+    if (z < -edgeLimit) {
+      z = -edgeLimit;
       hit = true;
     }
-    if (z > HALF - 4) {
-      z = HALF - 4;
+    if (z > edgeLimit) {
+      z = edgeLimit;
       hit = true;
     }
     return { x, z, hit };
@@ -6231,18 +6264,11 @@ export function createGame(
       p.melee = 0.4;
       p.meleeKind = p.meleeGen % 2 === 0 ? 0 : 1;
       p.meleeGen++;
-      const fx = -Math.sin(p.yaw);
-      const fz = -Math.cos(p.yaw);
-      if (hitPlayer) {
-        hurtPlayer(11);
-        vx += fx * 2.4;
-        vz += fz * 2.4;
-      } else if (victim && victim.active && victim.hp > 0 && victim.state !== "down") {
-        hurtBare(victim, 14, fx, fz, 0.55, false);
-      }
+      meleeContacts.set(p, { left: 0.16, victim, player: hitPlayer });
     };
     for (const p of peds) {
       if (!p.active) {
+        meleeContacts.delete(p);
         p.respawn = Math.max(0, p.respawn - dt);
         if (p.state === "down" && p.faction !== "cop" && p.respawn <= 0) {
           const me = playerPos();
@@ -6255,6 +6281,20 @@ export function createGame(
       p.shootPose = Math.max(0, p.shootPose - dt);
       p.flinch = Math.max(0, p.flinch - dt);
       p.melee = Math.max(0, p.melee - dt);
+      const contact = meleeContacts.get(p);
+      if (contact) {
+        contact.left -= dt;
+        if (p.state === "down" || p.hp <= 0 || p.flinch > 0) meleeContacts.delete(p);
+        else if (contact.left <= 0) {
+          meleeContacts.delete(p);
+          const target = contact.player ? (!driving && alive ? { x: px, z: pz } : null) : contact.victim;
+          if (target && Math.hypot(target.x - p.x, target.z - p.z) < 1.85) {
+            const fx = -Math.sin(p.yaw), fz = -Math.cos(p.yaw);
+            if (contact.player) { hurtPlayer(11); vx += fx * 2.4; vz += fz * 2.4; }
+            else if (contact.victim?.active && contact.victim.hp > 0 && contact.victim.state !== "down") hurtBare(contact.victim, 14, fx, fz, 0.55, false);
+          }
+        }
+      }
       p.brawl = Math.max(0, p.brawl - dt);
       p.dive = Math.max(0, p.dive - dt);
       p.mark = Math.max(0, p.mark - dt);
@@ -6403,8 +6443,8 @@ export function createGame(
           p.linger = 0;
           p.yaw = yawTo(p.x, p.z, stop.x, stop.z);
         }
-        const cx = p.x + -Math.sin(p.yaw) * 1.7 * dt;
-        const cz = p.z + -Math.cos(p.yaw) * 1.7 * dt;
+        const cx = p.x + -Math.sin(p.yaw) * p.walkPace * dt;
+        const cz = p.z + -Math.cos(p.yaw) * p.walkPace * dt;
         if (blocks.some((b) => circleHitsAABB(cx, cz, 0.34, b)) || Math.abs(cx) > HALF - 6 || Math.abs(cz) > HALF - 6) {
           p.yaw += Math.PI / 2;
         } else if (!overlapsFoot(cx, cz)) {
@@ -6910,6 +6950,10 @@ export function createGame(
     shootPose = Math.max(0, shootPose - dt);
     playerFlinch = Math.max(0, playerFlinch - dt);
     playerMelee = Math.max(0, playerMelee - dt);
+    if (playerContact > 0) {
+      playerContact -= dt;
+      if (playerContact <= 0) { playerContact = 0; playerMeleeContact(); }
+    }
     meleeCd = Math.max(0, meleeCd - dt);
     toastT = Math.max(0, toastT - dt);
     shake *= Math.exp(-4.5 * dt);
@@ -7275,7 +7319,7 @@ export function createGame(
     if (castReady) {
       const viewX = started ? (driving ? cars[playerCar]!.x : px) : 0;
       const viewZ = started ? (driving ? cars[playerCar]!.z : pz) : 0;
-      const animSlot = Math.floor(elapsed * 12) % 3;
+      const animSlot = animationFrame++ % 3;
       peds.forEach((p, i) => {
         const actor = pedActors[i];
         if (!actor) return;
@@ -7283,6 +7327,7 @@ export function createGame(
           parkActor(actor);
           return;
         }
+        actorAnimTime[i] = Math.min(0.15, (actorAnimTime[i] ?? 0) + animDt);
         const dist = Math.hypot(p.x - viewX, p.z - viewZ);
         if (dist > (p.state === "down" ? 120 : 78)) {
           parkActor(actor);
@@ -7311,11 +7356,12 @@ export function createGame(
             gun: gunFor(p.faction, p.look) ?? "pistol",
           },
           p.shotGen,
-          animDt * (close ? 1 : 3),
+          actorAnimTime[i]!,
           p.shootPose > 0 ? 0.6 : 0,
           p.flinchGen,
           p.meleeGen,
         );
+        actorAnimTime[i] = 0;
       });
       if (playerActor) {
         const showPlayer = started && !driving && (alive || phase === "dead");
@@ -7338,6 +7384,7 @@ export function createGame(
               pitch: camPitch,
               diving: false,
               speed: shownPace,
+              ...(aimPose || shootPose > 0 ? locomotionPose(vx, vz, bodyYaw) : {}),
               moving: footMoving && shownPace > 0.05,
               air: alive ? air : "none",
               fighting: false,
@@ -8269,12 +8316,70 @@ export function createGame(
     },
   };
 
+  const textState = () => ({
+    coordinates: "meters; +Y up; yaw 0 faces -Z; +yaw turns left",
+    ...window.__brookriver!.snap(),
+    ready: { city: !!cityHandle, cast: castReady, fleet: !!fleet, renderer: gpuReady },
+    player: { x: driving ? cars[playerCar]!.x : px, y: driving ? groundY(cars[playerCar]!.x, cars[playerCar]!.z) : groundY(px, pz) + py, z: driving ? cars[playerCar]!.z : pz, bodyYaw, clip: playerActor?.intent, legTurn: playerActor?.legTurn, air, reload: reloadT, melee: playerMelee, contact: playerContact, ammo: ammo[gun].mag },
+    nearby: peds.map((p, i) => ({ x: p.x, z: p.z, hp: p.hp, faction: p.faction, active: p.active, state: p.state, look: pedActors[i]?.root.name, identity: pedActors[i]?.profile, clip: pedActors[i]?.intent })).filter((p) => p.active && Math.hypot(p.x - (driving ? cars[playerCar]!.x : px), p.z - (driving ? cars[playerCar]!.z : pz)) < 18),
+  });
+  window.render_game_to_text = () => JSON.stringify(textState());
+  let manualTime = false;
+  let manualElapsed = 0;
+  let reviewView: number[] | null = null;
+  const reviewCamera = () => {
+    if (reviewView) {
+      camera.position.set(reviewView[0]!, reviewView[1]!, reviewView[2]!);
+      camera.lookAt(reviewView[3]!, reviewView[4]!, reviewView[5]!);
+    }
+  };
+  window.advanceTime = (ms: number) => {
+    manualTime = true;
+    const count = Math.max(1, Math.min(600, Math.round(ms / (1000 / 60))));
+    dtFrame = 1 / 60;
+    for (let n = 0; n < count; n++) {
+      step(dtFrame);
+      manualElapsed += dtFrame;
+      syncWorld(manualElapsed);
+      if (phase !== "pause") hallHandle?.tick(dtFrame);
+    }
+    reviewCamera();
+    drawMini();
+    if (gpuReady) post.render();
+    pushHud();
+  };
+  if (new URLSearchParams(location.search).has("qa")) window.__brookriverReview = {
+    pose(x, z, yaw = 0) {
+      if (inHall) exitHall();
+      if (roomId) exitRoom();
+      driving = false; started = true; phase = "play"; alive = true;
+      cars[playerCar]!.mode = "idle";
+      px = x; pz = z; py = 0; vx = 0; vz = 0; camYaw = bodyYaw = yaw;
+      liveDesk = null;
+    },
+    camera(x, y, z, tx, ty, tz) { reviewView = [x, y, z, tx, ty, tz]; reviewCamera(); },
+    crowd(start = 0) {
+      peds.forEach((p, i) => {
+        p.active = i >= start && i < start + 12; p.state = "walk"; p.hp = 100; p.linger = 100; p.beat = "idle";
+        p.x = -14 + ((i - start) % 6) * 2.7; p.z = -12 + Math.floor((i - start) / 6) * 3; p.yaw = Math.PI;
+        p.prevX = p.x; p.prevZ = p.z; p.goals = [{ x: p.x, z: p.z }]; p.goal = 0; p.linger = 0.1; p.lingerFor = 1000;
+      });
+    },
+    melee() {
+      peds.forEach((p) => { p.active = false; });
+      const p = peds[0]!;
+      p.active = true; p.state = "walk"; p.hp = 100; p.x = px; p.z = pz - 1.5; p.linger = 100;
+      p.prevX = p.x; p.prevZ = p.z; p.goals = [{ x: p.x, z: p.z }]; p.goal = 0; p.linger = 0.1; p.lingerFor = 1000;
+    },
+  };
+
   let freezeClock = false;
   let frozenAt = 0;
   let acc = 0;
   const loop = () => {
     if (disposed) return;
     raf = requestAnimationFrame(loop);
+    if (manualTime) return;
     timer.update();
     dtFrame = Math.min(timer.getDelta(), 0.05);
     acc += dtFrame;
@@ -8302,6 +8407,7 @@ export function createGame(
     }
     if (phase !== "pause") hallHandle?.tick(dtFrame);
     drawMini();
+    reviewCamera();
     if (gpuReady) post.render();
     hudAcc += dtFrame;
     if (hudAcc > 0.12) {
@@ -8345,10 +8451,15 @@ export function createGame(
       window.removeEventListener("pointerup", onMouseUp);
       document.removeEventListener("mousemove", onMove);
       if (audio.ctx) void audio.ctx.close();
+      pavingGeo.dispose();
+      pavingMat.dispose();
       post.dispose();
       renderer.dispose();
       if (window.__controlsTest) delete window.__controlsTest;
       if (window.__brookriver) delete window.__brookriver;
+      delete window.render_game_to_text;
+      delete window.advanceTime;
+      delete window.__brookriverReview;
       castReady = false;
       for (const actor of pedActors) actor.root.removeFromParent();
       playerActor?.root.removeFromParent();

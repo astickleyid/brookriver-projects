@@ -127,7 +127,7 @@ export type Desk =
       busy: number;
     }
   | { kind: "jobs"; title: string; cool: number; selected: number; jobs: JobCard[] }
-  | { kind: "mug"; job: JobCard }
+  | { kind: "mug"; job: JobCard; resident?: { name: string; role: string; manner: string } }
   | { kind: "blackjack"; wallet: number; bet: number; bets: number[]; state: BlackjackState | null }
   | { kind: "roulette"; wallet: number; bet: number; bets: number[]; pickKind: RouletteKind; pick: number; last: RouletteResult | null }
   | { kind: "slots"; wallet: number; bet: number; bets: number[]; machine: string; last: SlotsResult | null }

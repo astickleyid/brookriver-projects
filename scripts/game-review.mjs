@@ -141,7 +141,7 @@ try {
   await mobile.goto(url, { waitUntil: "domcontentloaded" });
   await mobile.waitForFunction(() => window.render_game_to_text && Object.values(JSON.parse(window.render_game_to_text()).ready).every(Boolean), null, { timeout: 90000 });
   await mobile.getByRole("button", { name: "Start", exact: true }).click();
-  await mobile.evaluate(() => window.advanceTime(20));
+  await mobile.evaluate(() => window.advanceTime(1000));
   assert.equal(await mobile.getByLabel("Move", { exact: true }).count(), 1);
   assert.equal(await mobile.getByLabel("Look", { exact: true }).count(), 1);
   await mobile.screenshot({ path: `${output}/mobile-touch.png` });

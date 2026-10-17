@@ -179,7 +179,7 @@ export function BrookriverApp() {
               {hud.loot > 0 ? <p className="text-xs text-amber">Goods ${hud.loot.toLocaleString("en-US")}</p> : null}
               {hud.assets ? <p className="text-xs leading-tight text-muted">{hud.assets}</p> : null}
               <div className="pointer-events-auto mt-2 flex flex-col items-end">
-                {hud.stations.map((station, index) => (
+                {hud.stations.map((station, index) => (touchUi && !station.active ? null : (
                   <button
                     key={station.name}
                     type="button"
@@ -188,7 +188,7 @@ export function BrookriverApp() {
                   >
                     {station.name}
                   </button>
-                ))}
+                )))}
               </div>
             </div>
           </div>
@@ -210,7 +210,7 @@ export function BrookriverApp() {
               </p>
             ) : null}
             {hud.shop && !hud.desk ? <p className="max-w-md text-center text-xs text-amber">{hud.shop}</p> : null}
-            {!hud.looking && !hud.pad ? <p className="text-center text-xs text-amber">{hud.padStatus}</p> : null}
+            {!touchUi && !hud.looking && !hud.pad ? <p className="text-center text-xs text-amber">{hud.padStatus}</p> : null}
             {hud.pad && !hud.looking ? (
               <p className="text-center text-xs tracking-wide text-muted">
                 {hud.driving

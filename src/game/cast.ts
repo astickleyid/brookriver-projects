@@ -1,19 +1,15 @@
 import * as THREE from "three/webgpu";
+import { PLAYABLES, playableProfile } from "./roster.ts";
+import { sculptBody } from "./roster-model.ts";
 import { characterProfile, dressCharacter, type CharacterProfile } from "./wardrobe.ts";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { clone as cloneSkinned } from "three/addons/utils/SkeletonUtils.js";
 
 /**
- * Quaternius CC0 cast for Brookriver.
- * The body is Universal Base Characters (superhero male and female). That is the
- * model the street was built on. Faces, hair, and the Universal Animation Library stay.
- * Street clothes are recolors of that same albedo: head and hands stay, torso, arms,
- * legs, and shoes are tee, hoodie, jacket, work shirt, suit, or a cop uniform.
- * Peasant, ranger, and the Ultimate Modular bodies are not loaded.
- * Blender measurement of Superhero_Male_FullBody (glTF, Y-up):
- * foot_l → ball_l is about (0, -0.071, +0.142), and the eyes sit further +Z than the head.
- * Both cues face +Z. They agree, so they are not an independent pair.
- * The mount turns that +Z front onto the parent’s −Z. Game yaw stays on the outer group.
+ * Quaternius CC0 skeleton, face and hair sources with authored Brookriver identities.
+ * Playable bodies are sculpted in bind space; separately weighted garments provide
+ * their silhouettes. Residents keep the lighter shared wardrobe system.
+ * Imported bodies face +Z; the mount turns their front onto the game's -Z.
  */
 export const MEASURED_TOE = new THREE.Vector3(0, -0.0713, 0.1422);
 
@@ -354,6 +350,7 @@ function civ(sex: "m" | "f", outfit: StreetOutfit, hair: string, alt: boolean, h
 }
 
 const PROTOS: ProtoSpec[] = [
+  ...PLAYABLES.map((hero): ProtoSpec => ({ key: `player-${hero.id}`, sex: hero.sex, outfit: hero.profile.outfit, hair: hero.hair, hairTint: hero.hairTint })),
   civ("m", "tee", "parted", false, HAIR.dark),
   civ("m", "tee", "beard", true, HAIR.brown),
   civ("m", "hoodie", "buzz", false, HAIR.dark),
@@ -385,17 +382,18 @@ const PROTOS: ProtoSpec[] = [
   { key: "cop-m", sex: "m", outfit: "uniform", hair: "buzz", hairTint: HAIR.dark },
   { key: "cop-f", sex: "f", outfit: "uniform", hair: "buns", hairTint: HAIR.dark },
   { key: "cop-m-b", sex: "m", outfit: "uniform", hair: "parted", hairTint: HAIR.brown },
-  { key: "player-m", sex: "m", outfit: "hoodie", hair: "parted", hairTint: HAIR.dark },
 ];
 
 export function appearanceFor(key: string) {
+  const hero = PLAYABLES.find((p) => key === `player-${p.id}`);
+  if (hero) return { height: 1, width: 1, skin: hero.skin, fabric: hero.profile.fabric };
   let hash = 2166136261;
   for (const c of key) hash = Math.imul(hash ^ c.charCodeAt(0), 16777619) >>> 0;
   const skins = [[0.68, 0.49, 0.36], [0.88, 0.73, 0.59], [1.08, 0.99, 0.88], [0.49, 0.34, 0.26], [0.94, 0.83, 0.7]];
   const fabric = key.startsWith("amber") ? [0xc7863f, 0x98632e] : key.startsWith("teal") ? [0x378b84, 0x275d68] : key.startsWith("cop") ? [0x293c58, 0x334963] : [0x697b68, 0x9c5950, 0x657b94, 0xb39b72, 0x7b657f, 0x495963];
   return {
-    height: key === "player-m" ? 1 : 0.93 + (hash % 9) * 0.018,
-    width: key === "player-m" ? 1 : 0.91 + ((hash >>> 4) % 8) * 0.026,
+    height: 0.93 + (hash % 9) * 0.018,
+    width: 0.91 + ((hash >>> 4) % 8) * 0.026,
     skin: skins[(hash >>> 8) % skins.length]!,
     fabric: fabric[(hash >>> 16) % fabric.length]!,
   };
@@ -410,7 +408,7 @@ export function actorKey(faction: string, index: number): string {
   if (faction === "civ") return CIV_KEYS[index % CIV_KEYS.length]!;
   if (faction === "amber") return AMBER_KEYS[index % AMBER_KEYS.length]!;
   if (faction === "teal") return TEAL_KEYS[index % TEAL_KEYS.length]!;
-  if (faction === "player") return "player-m";
+  if (faction === "player") return `player-${PLAYABLES[Math.abs(index) % PLAYABLES.length]!.id}`;
   return COP_KEYS[index % COP_KEYS.length]!;
 }
 
@@ -734,7 +732,12 @@ export function createActor(lib: CastLibrary, key: string, gun: HeldGun | "all" 
   const proto = lib.prototypes.get(key);
   if (!proto) throw new Error(`missing cast prototype ${key}`);
   const rig = cloneSkinned(proto) as THREE.Object3D;
-  const profile = characterProfile(key, residentIndex);
+  const hero = PLAYABLES.find((p) => key === `player-${p.id}`);
+  const profile = hero ? playableProfile(hero) : characterProfile(key, residentIndex);
+  if (hero) rig.traverse((o) => {
+    const mesh = o as THREE.SkinnedMesh;
+    if (mesh.isSkinnedMesh && /superhero/i.test(mesh.name)) mesh.geometry = sculptBody(mesh.geometry, hero);
+  });
   dressCharacter(rig, profile);
   lib.sources.push(rig);
   const mount = new THREE.Group();
@@ -771,7 +774,7 @@ export function createActor(lib: CastLibrary, key: string, gun: HeldGun | "all" 
   return { root, mixer, actions, intent: "", shotSeen: -1, flinchSeen: -1, meleeSeen: -1, phase, playing: null, overlay: null, kick, pelvis: rig.getObjectByName("pelvis"), spine: rig.getObjectByName("spine_01"), legTurn: 0, profile };
 }
 
-export function setHeldGun(actor: Actor, id: HeldGun) {
+export function setHeldGun(actor: Actor, id: HeldGun | null) {
   if (!actor.kick) return;
   for (const child of actor.kick.children) child.visible = child.name === id;
 }

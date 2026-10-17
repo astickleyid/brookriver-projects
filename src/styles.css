@@ -134,3 +134,37 @@
     0 0 24px color-mix(in srgb, var(--color-amber) 18%, transparent);
 }
 
+
+/* The game renderer supplies the live wardrobe preview behind this casting sheet. */
+.character-select { position: absolute; inset: 0; z-index: 20; overflow: auto; background: linear-gradient(90deg, var(--color-bg) 0%, color-mix(in srgb, var(--color-bg) 94%, transparent) 30%, transparent 65%); }
+.character-masthead { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1.25rem 2rem; border-bottom: 1px solid var(--color-line); }
+.character-sheet { width: min(43%, 36rem); padding: 1.5rem 2rem 2rem; }
+.character-stage-label { position: absolute; top: 6rem; right: 3rem; display: flex; flex-direction: column; text-align: right; color: color-mix(in srgb, var(--color-fg) 65%, transparent); pointer-events: none; }
+.character-preview-tools { position: absolute; right: 3rem; bottom: 2rem; display: flex; gap: .5rem; }
+.character-preview-tools button, .character-arrow { min-height: 44px; min-width: 44px; display: inline-flex; align-items: center; justify-content: center; gap: .5rem; border: 1px solid var(--color-line); background: var(--color-surface); color: var(--color-fg); padding: .5rem .75rem; }
+.character-roster { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .5rem; margin-top: 1rem; }
+.character-roster button { min-height: 68px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: .25rem; padding: .65rem; border: 1px solid var(--color-line); background: var(--color-surface); text-align: left; transition: border-color 180ms, background 180ms; }
+.character-roster button[aria-pressed="true"] { border-color: var(--color-amber); background: color-mix(in srgb, var(--color-amber) 10%, var(--color-bg)); }
+.character-roster button:hover { border-color: var(--color-muted); }
+.character-select button:focus-visible { outline: 2px solid var(--color-amber); outline-offset: 3px; }
+.character-bio-mobile { display: none; }
+.character-biography { animation: desk-in 180ms ease-out; }
+@media (max-width: 759px) {
+  .character-select { background: linear-gradient(0deg, var(--color-bg) 0%, var(--color-bg) 46%, transparent 74%); }
+  .character-masthead { padding: .75rem 1rem; }
+  .character-masthead > :last-child { font-size: .6rem; }
+  .character-stage-label { top: 4.25rem; right: 1rem; }
+  .character-stage-label > :first-child { font-size: 1.65rem; }
+  .character-stage-label > :last-child { font-size: .55rem; }
+  .character-preview-tools { top: 18rem; bottom: auto; right: 1rem; }
+  .character-preview-tools button { font-size: .75rem; padding: .5rem; }
+  .character-sheet { width: 100%; padding: 18rem 1rem 7rem; }
+  .character-start { position: fixed; bottom: 0; left: 0; right: 0; z-index: 2; margin: 0; padding: .75rem 1rem max(.75rem, env(safe-area-inset-bottom)); border-top: 1px solid var(--color-line); background: var(--color-bg); }
+  .character-biography { display: none; }
+  .character-bio-mobile { display: block; margin-top: .75rem; font-size: .8rem; }
+  .character-bio-mobile summary { min-height: 44px; padding: .75rem 0; color: var(--color-amber); cursor: pointer; }
+  .character-sheet h1 { font-size: 3rem; }
+  .character-roster button { min-height: 62px; }
+}
+@media (prefers-reduced-motion: reduce) { .character-bio-mobile { display: none; }
+.character-biography { animation: none; } .character-roster button { transition: none; } }

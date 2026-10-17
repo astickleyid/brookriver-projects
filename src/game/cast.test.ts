@@ -145,12 +145,12 @@ describe("cast roster", () => {
     assert.equal(amber.size, 4);
     assert.equal(teal.size, 4);
     assert.ok(cops.size >= 3);
-    assert.equal(actorKey("player", 3), "player-m");
+    assert.equal(actorKey("player", 3), "player-rafa");
     const outfits = new Set(Array.from({ length: 40 }, (_, i) => actorCut(actorKey("civ", i))));
     assert.ok(outfits.has("hoodie"));
     assert.ok(outfits.has("suit"));
     assert.ok(outfits.has("worker"));
-    assert.equal(actorCut("player-m"), "hoodie");
+    assert.equal(actorCut("player-rafa"), "worker");
     assert.equal(actorCut("cop-m"), "uniform");
     assert.equal(actorCut("civ-f-tee-a"), "tee");
     for (const key of civ) assert.equal(key.includes("peasant") || key.includes("ranger"), false);

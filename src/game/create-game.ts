@@ -1,4 +1,5 @@
 import * as THREE from "three/webgpu";
+import { CHARACTER_SAVE_KEY, PLAYABLES, playableById } from "./roster.ts";
 import { bloom } from "three/addons/tsl/display/BloomNode.js";
 import {
   abs,
@@ -150,6 +151,8 @@ export type HudSnapshot = {
   nearTeller: boolean;
   assets: string;
   portfolio: string;
+  character: string;
+  characterReady: boolean;
   pauseSel: number;
   desk: Desk | null;
   navSeq: number;
@@ -177,6 +180,8 @@ export type TouchInput = {
 };
 
 export type GameHandle = {
+  selectCharacter: (id: string) => void;
+  previewCharacter: (action: "turn" | "pose") => void;
   start: () => void;
   respawn: () => void;
   resume: () => void;
@@ -1295,6 +1300,41 @@ export function createGame(
   const actorAnimTime: number[] = [];
   let animationFrame = 0;
   let playerActor: Actor | null = null;
+  let chosenCharacter = playableById(null).id;
+  try { chosenCharacter = playableById(localStorage.getItem(CHARACTER_SAVE_KEY)).id; } catch { /* private browsing */ }
+  const playableActors = new Map<string, Actor>();
+  let previewYaw = -.18;
+  let previewWalk = false;
+  function selectCharacter(id: string) {
+    if (phase !== "menu") return;
+    const hero = playableById(id);
+    playerActor && (playerActor.root.visible = false);
+    chosenCharacter = hero.id;
+    previewYaw = -.18; previewWalk = false;
+    if (castLib) {
+      if (!playableActors.has(hero.id)) {
+        const actor = createActor(castLib, `player-${hero.id}`, "all");
+        scene.add(actor.root); playableActors.set(hero.id, actor);
+      }
+      playerActor = playableActors.get(hero.id)!;
+    }
+    try { localStorage.setItem(CHARACTER_SAVE_KEY, hero.id); } catch { /* choice remains available this session */ }
+    pushHud();
+  }
+  const studio = new THREE.Group();
+  studio.position.set(0, 40, 0);
+  const studioFloor = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 1.25, .08, 64), new THREE.MeshStandardMaterial({ color: 0x202831, roughness: .85 }));
+  studioFloor.position.y = -.04;
+  studio.add(studioFloor);
+  const studioBackdrop = new THREE.Mesh(new THREE.PlaneGeometry(30, 20), new THREE.MeshStandardMaterial({ color: 0x12171f, roughness: 1 }));
+  studioBackdrop.position.set(0, 3, 3); studioBackdrop.rotation.y = Math.PI;
+  studio.add(studioBackdrop);
+  const studioGround = new THREE.Mesh(new THREE.PlaneGeometry(30, 30), new THREE.MeshStandardMaterial({ color: 0x11161c, roughness: 1 }));
+  studioGround.rotation.x = -Math.PI / 2; studioGround.position.y = -.09; studio.add(studioGround);
+  for (const [x, y, z, color, intensity] of [[-2, 3, -2, 0xffe5c5, 14], [2, 2, -1, 0xd7e9ff, 9], [0, 3, 2, 0xffb020, 10]]) {
+    const light = new THREE.PointLight(color, intensity, 8); light.position.set(x!, y!, z!); studio.add(light);
+  }
+
   let radioTrack = 0;
   const radioOn = true;
   let lit = false;
@@ -1660,6 +1700,8 @@ export function createGame(
   } catch (err) {
     error = err instanceof Error ? err.message : "WebGL failed";
     const deadHandle: GameHandle = {
+      previewCharacter() {},
+      selectCharacter() {},
       start() {},
       respawn() {},
       resume() {},
@@ -1688,6 +1730,7 @@ export function createGame(
   });
 
   const scene = new THREE.Scene();
+  scene.add(studio);
   scene.background = new THREE.Color(0x100818);
   scene.fog = new THREE.FogExp2(0x241830, 0.0022);
 
@@ -2974,9 +3017,9 @@ export function createGame(
         parkActor(actor);
         return actor;
       });
-      playerActor = createActor(lib, actorKey("player", 0), "all");
-      scene.add(playerActor.root);
-      playerActor.root.visible = false;
+      selectCharacter(chosenCharacter);
+      // Loading can finish after Start was pressed.
+      if (!playerActor) { const actor = createActor(lib, `player-${chosenCharacter}`, "all"); scene.add(actor.root); playableActors.set(chosenCharacter, actor); playerActor = actor; }
       pedBody.visible = false;
       pedHead.visible = false;
       pedHair.visible = false;
@@ -3656,6 +3699,8 @@ export function createGame(
       ...hustleHud(),
       assets: assetLine(),
       portfolio: portfolioText(),
+      character: chosenCharacter,
+      characterReady: castReady,
       pauseSel,
       desk: liveDesk,
       navSeq,
@@ -6912,7 +6957,12 @@ export function createGame(
       else if (rise(13)) movePause(1);
       return;
     }
-    if (!started && phase === "menu" && (rise(0) || rise(9))) start();
+    if (!started && phase === "menu") {
+      const current = PLAYABLES.findIndex((p) => p.id === chosenCharacter);
+      if (rise(14) || rise(4)) selectCharacter(PLAYABLES[(current + PLAYABLES.length - 1) % PLAYABLES.length]!.id);
+      if (rise(15) || rise(5)) selectCharacter(PLAYABLES[(current + 1) % PLAYABLES.length]!.id);
+      if (castReady && (rise(0) || rise(9))) start();
+    }
     else if (phase === "dead" && rise(0)) respawn();
     else if (started && alive && phase === "play") {
       if (rise(0)) padUse = true;
@@ -7370,7 +7420,13 @@ export function createGame(
       if (playerActor) {
         const showPlayer = started && !driving && (alive || phase === "dead");
         playerGroup.visible = false;
-        if (!showPlayer) playerActor.root.visible = false;
+        studio.visible = !started;
+        if (!started) {
+          placeActor(playerActor, 0, 40, 0, previewYaw);
+          setHeldGun(playerActor, null);
+          updateActor(playerActor, { down: false, reloading: false, shooting: false, aiming: false, pitch: 0, diving: false, speed: previewWalk ? 1.6 : 0, fighting: false, armed: false, lingering: !previewWalk, beat: playerActor.profile.idle }, 0, animDt, 0);
+        }
+        else if (!showPlayer) playerActor.root.visible = false;
         else {
           const pace = Math.hypot(vx, vz);
           const aimPose = aiming && alive;
@@ -7536,10 +7592,10 @@ export function createGame(
 
     const car = cars[playerCar]!;
     if (!started) {
-      const ang = elapsed * 0.13;
-      camera.position.set(Math.sin(ang) * 72, 38, Math.cos(ang) * 72);
+      const mobile = canvas.clientWidth < 760;
+      camera.position.set(.15, 41.15, mobile ? -5.8 : -2.8);
       camHold.copy(camera.position);
-      camera.lookAt(0, 2 + plazaY, 0);
+      camera.lookAt(mobile ? -.3 : .78, mobile ? 38.8 : 41.0, 0);
       head.intensity = 0;
     } else {
       const looking = document.pointerLockElement === canvas || rightLook || gLook;
@@ -8021,6 +8077,7 @@ export function createGame(
   }
 
   function quitToMenu() {
+    reviewView = null;
     phase = "menu";
     started = false;
     alive = true;
@@ -8050,7 +8107,7 @@ export function createGame(
   }
 
   function start() {
-    if (started) return;
+    if (started || !castReady) return;
     hallHandle?.setOpen(false);
     roomsHandle?.setActive(null);
     inHall = false;
@@ -8068,7 +8125,7 @@ export function createGame(
     lookOffset = 0;
     lookPitch = -0.08;
     audio.ensure();
-    say("She's hot. Don't stop.");
+    say(`${playableById(chosenCharacter).name}: “${playableById(chosenCharacter).quote}”`);
     pushHud();
   }
 
@@ -8080,6 +8137,10 @@ export function createGame(
       e.preventDefault();
       if (phase === "pause") resumeGame();
       else if (phase === "play") pauseGame();
+    }
+    if (phase === "menu" && !e.repeat && ["ArrowLeft", "ArrowRight"].includes(e.code)) {
+      const index = PLAYABLES.findIndex((p) => p.id === chosenCharacter);
+      selectCharacter(PLAYABLES[(index + (e.code === "ArrowLeft" ? -1 : 1) + PLAYABLES.length) % PLAYABLES.length]!.id);
     }
     if (phase === "pause") {
       if (e.code === "ArrowDown" || e.code === "KeyS") movePause(1);
@@ -8324,6 +8385,7 @@ export function createGame(
     coordinates: "meters; +Y up; yaw 0 faces -Z; +yaw turns left",
     ...window.__brookriver!.snap(),
     ready: { city: !!cityHandle, cast: castReady, fleet: !!fleet, renderer: gpuReady },
+    character: { id: chosenCharacter, name: playableById(chosenCharacter).name, brand: playableById(chosenCharacter).brand, model: playerActor?.root.name, profile: playerActor?.profile.id, preview: !started },
     player: { x: driving ? cars[playerCar]!.x : px, y: driving ? groundY(cars[playerCar]!.x, cars[playerCar]!.z) : groundY(px, pz) + py, z: driving ? cars[playerCar]!.z : pz, bodyYaw, clip: playerActor?.intent, legTurn: playerActor?.legTurn, air, reload: reloadT, melee: playerMelee, contact: playerContact, ammo: ammo[gun].mag },
     nearby: peds.map((p, i) => ({ x: p.x, z: p.z, hp: p.hp, faction: p.faction, active: p.active, state: p.state, look: pedActors[i]?.root.name, identity: pedActors[i]?.profile, clip: pedActors[i]?.intent })).filter((p) => p.active && Math.hypot(p.x - (driving ? cars[playerCar]!.x : px), p.z - (driving ? cars[playerCar]!.z : pz)) < 18),
   });
@@ -8425,6 +8487,8 @@ export function createGame(
 
   return {
     touch,
+    selectCharacter,
+    previewCharacter(action) { if (phase !== "menu") return; if (action === "turn") previewYaw += Math.PI / 2; else previewWalk = !previewWalk; },
     start,
     respawn,
     resume: resumeGame,
@@ -8466,7 +8530,9 @@ export function createGame(
       delete window.__brookriverReview;
       castReady = false;
       for (const actor of pedActors) actor.root.removeFromParent();
-      playerActor?.root.removeFromParent();
+      for (const actor of playableActors.values()) actor.root.removeFromParent();
+      for (const mesh of [studioFloor, studioBackdrop, studioGround]) { mesh.geometry.dispose(); (mesh.material as THREE.Material).dispose(); }
+      studio.removeFromParent();
       pedActors = [];
       playerActor = null;
       if (castLib) {

@@ -43,7 +43,7 @@ This fixes the structural mismatch between visible buildings and the playable ma
 
 The original cast used two superhero base bodies with recolored clothing textures. A hoodie, jacket, suit and uniform largely had the same body silhouette.
 
-The new wardrobe system adds:
+The resident wardrobe system adds:
 
 - Separately skinned clothing geometry with fuller hoodie/jacket sleeves, cloth surfaces and trouser/shoe volume. Bone weights are preserved.
 - Hoodie collars, strings and pockets; jacket/suit lapels and ties; reflective workwear details; police vest, badge, radio and duty equipment.
@@ -52,7 +52,9 @@ The new wardrobe system adds:
 - Persistent resident names, roles, personality descriptions, idle preferences, walking pace and gait variation. The nearby interaction board shows the resident's identity.
 - Material/bone batching for rigid accessories, plus cleanup of generated geometry and textures.
 
-The result is a modular character upgrade using the existing animation-compatible rig. Faces still share the existing male/female base meshes. The personality system supplies visual identity and behavior traits; it is not branching dialogue or a new social AI simulation. Artist-authored faces, tailored fashion assets and additional body topology would take this further.
+The playable cast is now a separate authored roster: Mara / AFTERHOURS, Leon / DEADSTOCK, Imani / PULSE, Rafa / TORQUE, Jules / OFFSCRIPT and Sana / SUNDOWN. Players choose at the beginning using a live animated model, turn/walk previews and saved selection. Each protagonist has separately sculpted proportions/face geometry, chosen skin/hair colors, independently constructed skinned garments, a biography, personality, introductory caption and voice direction. See [CHARACTER-DIRECTION.md](CHARACTER-DIRECTION.md) for the roster and implementation details.
+
+The source facial topology and animation skeleton remain shared Quaternius assets. Voice direction is written metadata; recorded accents, branching dialogue and character questlines remain outside this implementation.
 
 ### Animation and contact
 
@@ -66,7 +68,7 @@ Shotgun and SMG animation still derive from the available pistol set. This is an
 
 ## Verification
 
-- Game unit tests: **103 passing**, including new world geometry, directional movement, appearance and wardrobe regressions.
+- Game unit tests: **107 passing**, including new world geometry, directional movement, appearance and wardrobe regressions.
 - TypeScript: passing.
 - Production build: passing.
 - Browser regression: steering in both directions, aimed strafe/backpedal, jump/landing, melee wind-up/contact damage, moving reload/refill, usable outer road, physical perimeter, resident identity and wardrobe captures.
@@ -88,7 +90,7 @@ PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH='/path/to/chrome' node scripts/game-review.m
 
 1. Author recognizable neighborhoods, a real waterfront, sightlines, alleys and landmarks on top of the repaired geometry contract. Add more building families before expanding map size.
 2. Replace the remaining broad collision approximations for street furniture with an authored prop/collision list.
-3. Add authored wardrobe meshes and distinct faces/body topology. Keep their silhouettes and accessories readable during gameplay, not just in a lineup.
+3. Continue the playable cast art pass with bespoke facial topology, richer cloth textures/folds and recorded voice performances; validate the six identities with players.
 4. Add proper shotgun/SMG animation assets and left-hand placement. Compare muzzle direction, hand contact and reload timing per weapon.
 5. Extract world creation, combat, police/traffic, audio and persistence from the orchestrator in separate, tested changes.
 6. Profile actual target devices. Browser viewport checks do not establish phone GPU performance or physical controller acceptance.

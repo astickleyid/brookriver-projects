@@ -11,6 +11,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
  * Roads stay on the 50 m grid so driving and the doors keep their streets.
  * The lots do not. Each block is a court, a row, a tower, or a single front,
  * not a mirrored pair of the same two boxes.
+ * The ground is not a plane. Roads follow a shelf. Each lot sits on its own pad.
  */
 
 export const DISTRICT = { cell: 50, road: 16, grid: 5, shoulder: 2.4 } as const;
@@ -152,6 +153,106 @@ export function lotMasses(frame = DISTRICT): BlockBox[] {
   return out;
 }
 
+const CITY_EDGE = 168;
+
+function smooth(edge0: number, edge1: number, value: number) {
+  const t = Math.max(0, Math.min(1, (value - edge0) / (edge1 - edge0 || 1)));
+  return t * t * (3 - 2 * t);
+}
+
+function nearestLine(v: number) {
+  const half = (DISTRICT.grid * DISTRICT.cell) / 2;
+  const i = Math.round((v + half) / DISTRICT.cell);
+  const c = Math.max(0, Math.min(DISTRICT.grid, i));
+  return -half + c * DISTRICT.cell;
+}
+
+function roadGap(x: number, z: number) {
+  const rx = nearestLine(x);
+  const rz = nearestLine(z);
+  const dx = Math.abs(x - rx);
+  const dz = Math.abs(z - rz);
+  if (dx <= dz) return { dist: dx, sx: rx, sz: z };
+  return { dist: dz, sx: x, sz: rz };
+}
+
+/** District shelves. West bluff, north ridge, south basin. The plaza stays low. */
+function shelfRaw(x: number, z: number) {
+  const plaza = smooth(16, 46, Math.hypot(x, z));
+  const west = smooth(8, -118, x);
+  const north = smooth(-8, 118, z);
+  const south = smooth(6, -118, z);
+  const east = smooth(-20, 118, x);
+  const ripple = Math.sin(x * 0.028 + 0.6) * Math.cos(z * 0.024 - 0.8);
+  const bowl = Math.sin((x + z) * 0.02);
+  const h = (west * 4.4 + north * 3.6 + east * 1.45 + ripple * 0.65 + bowl * 0.55 - south * 2.6) * plaza;
+  const rim = smooth(158, 112, Math.max(Math.abs(x), Math.abs(z)));
+  return h * rim;
+}
+
+function terrace(x: number, z: number) {
+  const half = (DISTRICT.grid * DISTRICT.cell) / 2;
+  const gx = Math.floor((x + half) / DISTRICT.cell);
+  const gz = Math.floor((z + half) / DISTRICT.cell);
+  if (gx < 0 || gz < 0 || gx >= DISTRICT.grid || gz >= DISTRICT.grid) return 0;
+  if (gx === 2 && gz === 2) return 0.15;
+  const n = unit(gx, gz, 11);
+  const bluff = gx === 0 || gz === 4 ? 0.7 : gx === 4 || gz === 0 ? 0.28 : 0;
+  return 0.5 + n * 1.25 + bluff;
+}
+
+let massGrid: BlockBox[][] | null = null;
+
+function massesInCell(x: number, z: number): BlockBox[] {
+  if (!massGrid) {
+    const cells: BlockBox[][] = Array.from({ length: DISTRICT.grid * DISTRICT.grid }, () => []);
+    const half = (DISTRICT.grid * DISTRICT.cell) / 2;
+    for (const b of lotMasses()) {
+      if (b.h <= 2) continue;
+      const cx = (b.minX + b.maxX) / 2;
+      const cz = (b.minZ + b.maxZ) / 2;
+      const gx = Math.min(DISTRICT.grid - 1, Math.max(0, Math.floor((cx + half) / DISTRICT.cell)));
+      const gz = Math.min(DISTRICT.grid - 1, Math.max(0, Math.floor((cz + half) / DISTRICT.cell)));
+      cells[gz * DISTRICT.grid + gx]!.push(b);
+    }
+    massGrid = cells;
+  }
+  const half = (DISTRICT.grid * DISTRICT.cell) / 2;
+  const gx = Math.floor((x + half) / DISTRICT.cell);
+  const gz = Math.floor((z + half) / DISTRICT.cell);
+  if (gx < 0 || gz < 0 || gx >= DISTRICT.grid || gz >= DISTRICT.grid) return [];
+  return massGrid[gz * DISTRICT.grid + gx]!;
+}
+
+function massAt(x: number, z: number): BlockBox | null {
+  for (const b of massesInCell(x, z)) {
+    if (x >= b.minX - 0.35 && x <= b.maxX + 0.35 && z >= b.minZ - 0.35 && z <= b.maxZ + 0.35) return b;
+  }
+  return null;
+}
+
+/**
+ * One height for the mesh, the cars, and the people.
+ * Asphalt follows the shelf. A lot is a flat pad above that shelf.
+ * The hall and the rooms sit outside the district and stay at 0.
+ */
+export function groundY(x: number, z: number): number {
+  if (Math.abs(x) > CITY_EDGE || Math.abs(z) > CITY_EDGE) return 0;
+  const gap = roadGap(x, z);
+  const roadH = shelfRaw(gap.sx, gap.sz);
+  // Street tiles are 18 m across, so the asphalt stays flat past the 16 m lane.
+  const lane = 9.4;
+  if (gap.dist <= lane) return roadH;
+  const mass = massAt(x, z);
+  if (mass) {
+    const cx = (mass.minX + mass.maxX) / 2;
+    const cz = (mass.minZ + mass.maxZ) / 2;
+    return shelfRaw(cx, cz) + terrace(cx, cz);
+  }
+  const t = smooth(lane, lane + 1.15, gap.dist);
+  return roadH + (shelfRaw(x, z) + terrace(x, z) - roadH) * t;
+}
+
 function frontFace(b: BlockBox, siblings: BlockBox[], frame: { cell: number; road: number; grid: number; shoulder: number }): Face {
   const half = (frame.grid * frame.cell) / 2;
   const gx = Math.min(frame.grid - 1, Math.max(0, Math.floor((b.minX + half) / frame.cell)));
@@ -216,9 +317,11 @@ function placeFronts(out: Placement[], specs: Record<BKind, Spec>, frame: typeof
       const thin = Math.min(span, depth);
       const kind: BKind = b.h > 22 || thin > 14 ? (thin > 12 ? "large" : "medium") : b.h < 12 && thin < 11 ? "small" : "medium";
       const spec = specs[kind];
-      const fitDepth = spec.depth > 0.01 ? Math.min(1, (into - 0.12) / spec.depth) : 1;
+      const salt = Math.round(b.minX * 3 + b.minZ);
+      const setback = Math.min(0.45 + unit(salt, Math.round(b.maxX + b.maxZ), 15) * 1.65, into * 0.26);
+      const fitDepth = spec.depth > 0.01 ? Math.min(1, (into - setback - 0.12) / spec.depth) : 1;
       if (fitDepth < 0.18) continue;
-      const gap = 0.55;
+      const gap = 0.9;
       const widthAt = spec.width * fitDepth;
       let count = 1;
       if (widthAt * 2 + gap <= along - 0.2) count = 2;
@@ -230,12 +333,16 @@ function placeFronts(out: Placement[], specs: Record<BKind, Spec>, frame: typeof
       const total = piece * count + gap * (count - 1);
       const midAlong = face === "west" || face === "east" ? (b.minZ + b.maxZ) / 2 : (b.minX + b.maxX) / 2;
       const start = midAlong - total / 2 + piece / 2;
-      const across = face === "west" ? b.minX : face === "east" ? b.maxX : face === "south" ? b.minZ : b.maxZ;
+      const across = face === "west" ? b.minX + setback : face === "east" ? b.maxX - setback : face === "south" ? b.minZ + setback : b.maxZ - setback;
+      const along0 = face === "west" || face === "east" ? b.minZ : b.minX;
+      const along1 = face === "west" || face === "east" ? b.maxZ : b.maxX;
       for (let i = 0; i < count; i++) {
-        const at = start + i * (piece + gap);
+        const slide = (unit(salt, i + 3, 21) - 0.5) * 0.5;
+        const at = Math.min(along1 - piece / 2 - 0.08, Math.max(along0 + piece / 2 + 0.08, start + i * (piece + gap) + slide));
         const x = face === "west" || face === "east" ? across : at;
         const z = face === "west" || face === "east" ? at : across;
-        out.push({ kind, x, y: LIFT, z, yaw: FACE_YAW[face], sx: fit, sy: fit, sz: fit, face });
+        const bulk = 0.94 + unit(Math.round(x * 5), Math.round(z * 5), 17 + i) * 0.2;
+        out.push({ kind, x, y: LIFT + groundY(x, z), z, yaw: FACE_YAW[face], sx: fit, sy: fit * bulk, sz: fit, face });
       }
     }
   }
@@ -276,19 +383,20 @@ export function layoutDistrict(specs: Record<BKind, Spec>, frame = DISTRICT): Pl
 }
 
 function flat(kind: "street" | "cross", x: number, z: number, yaw: number, stretch: number): Placement {
-  return { kind, x, y: LIFT, z, yaw, sx: stretch, sy: 1, sz: 1, face: null };
+  return { kind, x, y: LIFT + groundY(x, z), z, yaw, sx: stretch, sy: 1, sz: 1, face: null };
 }
 
-/** West reads warm, east reads cool. Large bodies stand well above the houses. */
+/** Two tones per side, so a row is not one wash. Height stays near the kit, not a squash. */
 export function districtLook(x: number, z: number, kind: BKind): { tint: number; height: number } {
-  let tint = 0xffffff;
-  if (x < -40) tint = 0xf0d2b4;
-  else if (x > 40) tint = 0xc9d7ea;
-  else if (z < -40) tint = 0xe7d3bf;
-  else if (z > 40) tint = 0xd5d8e4;
   const n = Math.abs(Math.sin(x * 0.17 + z * 0.13));
-  const base = kind === "large" ? 1.12 : kind === "medium" ? 0.78 : 0.55;
-  const spread = kind === "large" ? 0.65 : kind === "small" ? 0.22 : 0.34;
+  const alt = Math.sin(x * 0.09 + z * 0.15 + 2.2) > 0.15;
+  let tint = alt ? 0xe6d7c4 : 0xcfc3b0;
+  if (x < -40) tint = alt ? 0xf0d2b4 : 0xd9b294;
+  else if (x > 40) tint = alt ? 0xc9d7ea : 0xaebfc4;
+  else if (z < -40) tint = alt ? 0xe7d3bf : 0xc9a88e;
+  else if (z > 40) tint = alt ? 0xd5d8e4 : 0xb7c3b2;
+  const base = kind === "large" ? 1.04 : kind === "medium" ? 0.96 : 0.9;
+  const spread = kind === "large" ? 0.34 : kind === "medium" ? 0.14 : 0.08;
   return { tint, height: base + n * spread };
 }
 
@@ -473,7 +581,7 @@ export async function mountDressing(scene: THREE.Scene): Promise<CityHandle> {
     props.map(async (prop) => {
       const gltf = await loader.loadAsync(`${base}/${prop.file}`);
       const model = gltf.scene;
-      model.position.set(prop.x, 0, prop.z);
+      model.position.set(prop.x, groundY(prop.x, prop.z), prop.z);
       model.rotation.y = prop.yaw;
       model.scale.setScalar(prop.s);
       model.traverse((obj) => {

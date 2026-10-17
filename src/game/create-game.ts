@@ -59,7 +59,7 @@ import {
   type Melee,
   type ReactKind,
 } from "@/game/cast";
-import { lotMasses, mountCity, mountDressing, type CityHandle } from "@/game/city";
+import { groundY, lotMasses, mountCity, mountDressing, type CityHandle } from "@/game/city";
 import { bodyFor, loadFleet, type Fleet, type FleetBody } from "@/game/fleet";
 import { PED_GAP, PLAYER_BUBBLE, separateCrowd } from "@/game/crowd";
 import { HALL_ORIGIN, hallWalls, mountHall, type HallHandle } from "@/game/hall";
@@ -375,8 +375,9 @@ function rayAABB(
 ) {
   let tmin = 0;
   let tmax = maxT;
+  const pad = groundY((b.minX + b.maxX) / 2, (b.minZ + b.maxZ) / 2);
   const min = [b.minX, 0, b.minZ];
-  const max = [b.maxX, b.h, b.maxZ];
+  const max = [b.maxX, b.h + pad, b.maxZ];
   const o = [ox, oy, oz];
   const d = [dx, dy, dz];
   for (let i = 0; i < 3; i++) {
@@ -1863,8 +1864,25 @@ export function createGame(
   scene.add(stars);
 
   const groundTex = makeGroundTexture(roadXs, roadZs);
+  const groundGeo = new THREE.PlaneGeometry(WORLD + 80, WORLD + 80, 180, 180);
+  groundGeo.rotateX(-Math.PI / 2);
+  const groundPos = groundGeo.attributes.position;
+  const groundCol = new Float32Array(groundPos.count * 3);
+  for (let i = 0; i < groundPos.count; i++) {
+    const x = groundPos.getX(i);
+    const z = groundPos.getZ(i);
+    const y = groundY(x, z);
+    groundPos.setY(i, y);
+    const t = Math.max(-1, Math.min(1, y / 6));
+    groundCol[i * 3] = 0.94 + t * 0.06;
+    groundCol[i * 3 + 1] = 0.95 + t * 0.03;
+    groundCol[i * 3 + 2] = 0.98 - t * 0.06;
+  }
+  groundGeo.setAttribute("color", new THREE.BufferAttribute(groundCol, 3));
+  groundPos.needsUpdate = true;
+  groundGeo.computeVertexNormals();
   const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(WORLD + 80, WORLD + 80),
+    groundGeo,
     new THREE.MeshStandardMaterial({
       map: groundTex.map,
       roughnessMap: groundTex.rough,
@@ -1872,9 +1890,9 @@ export function createGame(
       metalness: 0.22,
       envMapIntensity: 1.45,
       color: 0xffffff,
+      vertexColors: true,
     }),
   );
-  ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = qualityHigh;
   scene.add(ground);
 
@@ -2118,7 +2136,7 @@ export function createGame(
   spireMesh.instanceMatrix.needsUpdate = true;
   scene.add(spireMesh);
 
-  const treeSpots: Array<{ x: number; z: number; s: number }> = [];
+  const treeSpots: Array<{ x: number; z: number; s: number; y: number }> = [];
   for (let gx = 0; gx < GRID; gx++) {
     for (let gz = 0; gz < GRID; gz++) {
       if (gx === 2 && gz === 2) continue;
@@ -2134,7 +2152,7 @@ export function createGame(
         if (staticBlocks.some((b) => x > b.minX - 1.1 && x < b.maxX + 1.1 && z > b.minZ - 1.1 && z < b.maxZ + 1.1)) continue;
         if (roadXs.some((rx) => Math.abs(x - rx) < ROAD / 2 + 0.6)) continue;
         if (roadZs.some((rz) => Math.abs(z - rz) < ROAD / 2 + 0.6)) continue;
-        treeSpots.push({ x, z, s: 0.75 + rand() * 0.55 });
+        treeSpots.push({ x, z, s: 0.75 + rand() * 0.55, y: groundY(x, z) });
       }
     }
   }
@@ -2158,11 +2176,11 @@ export function createGame(
   canopyMesh.frustumCulled = false;
   canopy2.frustumCulled = false;
   treeSpots.forEach((t, i) => {
-    m.compose(new THREE.Vector3(t.x, 1.05, t.z), qid, new THREE.Vector3(1, 2.1, 1));
+    m.compose(new THREE.Vector3(t.x, 1.05 + t.y, t.z), qid, new THREE.Vector3(1, 2.1, 1));
     trunkMesh.setMatrixAt(i, m);
-    m.compose(new THREE.Vector3(t.x, 2.55, t.z), qid, new THREE.Vector3(t.s, t.s, t.s));
+    m.compose(new THREE.Vector3(t.x, 2.55 + t.y, t.z), qid, new THREE.Vector3(t.s, t.s, t.s));
     canopyMesh.setMatrixAt(i, m);
-    m.compose(new THREE.Vector3(t.x + 0.15, 3.35, t.z - 0.1), qid, new THREE.Vector3(t.s * 0.85, t.s * 0.9, t.s * 0.85));
+    m.compose(new THREE.Vector3(t.x + 0.15, 3.35 + t.y, t.z - 0.1), qid, new THREE.Vector3(t.s * 0.85, t.s * 0.9, t.s * 0.85));
     canopy2.setMatrixAt(i, m);
     canopyMesh.setColorAt(i, tint.setHex(i % 3 === 0 ? 0x3a6a48 : i % 3 === 1 ? 0x245038 : 0x4a7a52));
   });
@@ -2212,12 +2230,32 @@ export function createGame(
   );
   curbMesh.frustumCulled = false;
   curbList.forEach(([x, z, sx, sz], i) => {
-    m.compose(new THREE.Vector3(x, 0.11, z), qid, new THREE.Vector3(sx, 0.22, sz));
+    m.compose(new THREE.Vector3(x, 0.11 + groundY(x, z), z), qid, new THREE.Vector3(sx, 0.22, sz));
     curbMesh.setMatrixAt(i, m);
   });
   if (curbList.length === 0) curbMesh.setMatrixAt(0, m.compose(new THREE.Vector3(0, -20, 0), qid, new THREE.Vector3(0.001, 0.001, 0.001)));
   curbMesh.instanceMatrix.needsUpdate = true;
   scene.add(curbMesh);
+
+  const liftBlockMesh = (mesh: THREE.InstancedMesh, blocks: AABB[]) => {
+    const mat = new THREE.Matrix4();
+    const p = new THREE.Vector3();
+    const quat = new THREE.Quaternion();
+    const sc = new THREE.Vector3();
+    const n = Math.min(mesh.count, blocks.length);
+    for (let i = 0; i < n; i++) {
+      mesh.getMatrixAt(i, mat);
+      mat.decompose(p, quat, sc);
+      if (p.y < -15 || sc.x < 0.02) continue;
+      const b = blocks[i]!;
+      p.y += groundY((b.minX + b.maxX) / 2, (b.minZ + b.maxZ) / 2);
+      mesh.setMatrixAt(i, mat.compose(p, quat, sc));
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+  };
+  for (const mesh of [buildingMesh, podiumMesh, midMesh, finMesh, beltMesh, coreMesh, roofMesh, corniceMesh]) liftBlockMesh(mesh, staticBlocks);
+  liftBlockMesh(mechMesh, tallBlocks);
+  liftBlockMesh(spireMesh, spires);
 
   const boxBlocks = [buildingMesh, podiumMesh, midMesh, finMesh, beltMesh, coreMesh, roofMesh, corniceMesh, mechMesh, spireMesh, curbMesh];
   void mountCity(scene, qualityHigh, { cell: CELL, road: ROAD, grid: GRID, shoulder: 2.4 }).then((handle) => {
@@ -2269,11 +2307,12 @@ export function createGame(
     for (const z of roadZs) {
       const lx = x + ROAD / 2 + 0.55;
       const lz = z + ROAD / 2 + 0.55;
-      m.compose(new THREE.Vector3(lx, 3.7, lz), qid, new THREE.Vector3(1, 1, 1));
+      const ly = groundY(lx, lz);
+      m.compose(new THREE.Vector3(lx, 3.7 + ly, lz), qid, new THREE.Vector3(1, 1, 1));
       poleMesh.setMatrixAt(li, m);
-      m.compose(new THREE.Vector3(lx - 0.45, 7.2, lz), qid, new THREE.Vector3(1, 1, 1));
+      m.compose(new THREE.Vector3(lx - 0.45, 7.2 + ly, lz), qid, new THREE.Vector3(1, 1, 1));
       armMesh.setMatrixAt(li, m);
-      m.compose(new THREE.Vector3(lx - 0.95, 7.05, lz), qid, new THREE.Vector3(1, 1, 1));
+      m.compose(new THREE.Vector3(lx - 0.95, 7.05 + ly, lz), qid, new THREE.Vector3(1, 1, 1));
       bulbMesh.setMatrixAt(li, m);
       li++;
     }
@@ -2297,22 +2336,25 @@ export function createGame(
     const zi = i % roadZs.length;
     const x = roadXs[xi]!;
     const z = roadZs[zi]!;
-    m.compose(new THREE.Vector3(x + ROAD / 2 - 0.4, 0.05, z + ROAD / 2 + 0.55), qid, new THREE.Vector3(1.35, 1, 1.35));
+    const pxL = x + ROAD / 2 - 0.4;
+    const pzL = z + ROAD / 2 + 0.55;
+    m.compose(new THREE.Vector3(pxL, 0.05 + groundY(pxL, pzL), pzL), qid, new THREE.Vector3(1.35, 1, 1.35));
     poolMesh.setMatrixAt(i, m);
   }
   poolMesh.instanceMatrix.needsUpdate = true;
   scene.add(poolMesh);
 
   const stone = new THREE.MeshStandardMaterial({ color: 0xb2aa9c, roughness: 0.86, metalness: 0.04, roughnessMap: grit });
+  const plazaY = groundY(0, 0);
   const fountain = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 3.8, 0.85, 24), stone);
-  fountain.position.set(0, 0.42, 0);
+  fountain.position.set(0, 0.42 + plazaY, 0);
   scene.add(fountain);
   const lip = new THREE.Mesh(
     new THREE.TorusGeometry(2.35, 0.16, 8, 24),
     new THREE.MeshStandardMaterial({ color: 0xcbb98a, roughness: 0.35, metalness: 0.45 }),
   );
   lip.rotation.x = Math.PI / 2;
-  lip.position.set(0, 0.86, 0);
+  lip.position.set(0, 0.86 + plazaY, 0);
   scene.add(lip);
   const water = new THREE.Mesh(
     new THREE.CircleGeometry(2.15, 28),
@@ -2328,13 +2370,13 @@ export function createGame(
     }),
   );
   water.rotation.x = -Math.PI / 2;
-  water.position.set(0, 0.9, 0);
+  water.position.set(0, 0.9 + plazaY, 0);
   scene.add(water);
   const jet = new THREE.Mesh(
     new THREE.CylinderGeometry(0.08, 0.16, 1.6, 8),
     new THREE.MeshStandardMaterial({ color: 0xd7eef2, emissive: 0x9fd4e0, emissiveIntensity: 0.4, transparent: true, opacity: 0.55, roughness: 0.1 }),
   );
-  jet.position.set(0, 1.7, 0);
+  jet.position.set(0, 1.7 + plazaY, 0);
   scene.add(jet);
 
   const sigs: Array<{ x: number; z: number; ns: boolean }> = [];
@@ -2369,11 +2411,12 @@ export function createGame(
   sigHead.frustumCulled = false;
   sigBulb.frustumCulled = false;
   sigs.forEach((s, i) => {
-    m.compose(new THREE.Vector3(s.x, 2.4, s.z), qid, new THREE.Vector3(1, 1, 1));
+    const sy = groundY(s.x, s.z);
+    m.compose(new THREE.Vector3(s.x, 2.4 + sy, s.z), qid, new THREE.Vector3(1, 1, 1));
     sigPole.setMatrixAt(i, m);
-    m.compose(new THREE.Vector3(s.x, 4.55, s.z), qid, new THREE.Vector3(1, 1, 1));
+    m.compose(new THREE.Vector3(s.x, 4.55 + sy, s.z), qid, new THREE.Vector3(1, 1, 1));
     sigHead.setMatrixAt(i, m);
-    m.compose(new THREE.Vector3(s.x, 4.62, s.z), qid, new THREE.Vector3(1.45, 1.45, 1.45));
+    m.compose(new THREE.Vector3(s.x, 4.62 + sy, s.z), qid, new THREE.Vector3(1.45, 1.45, 1.45));
     sigBulb.setMatrixAt(i, m);
   });
   sigPole.instanceMatrix.needsUpdate = true;
@@ -2413,9 +2456,10 @@ export function createGame(
   hydrantMesh.frustumCulled = false;
   capMesh.frustumCulled = false;
   hydrants.forEach(([x, z], i) => {
-    m.compose(new THREE.Vector3(x, 0.36, z), qid, new THREE.Vector3(1, 1, 1));
+    const hy = groundY(x, z);
+    m.compose(new THREE.Vector3(x, 0.36 + hy, z), qid, new THREE.Vector3(1, 1, 1));
     hydrantMesh.setMatrixAt(i, m);
-    m.compose(new THREE.Vector3(x, 0.78, z), qid, new THREE.Vector3(1, 1, 1));
+    m.compose(new THREE.Vector3(x, 0.78 + hy, z), qid, new THREE.Vector3(1, 1, 1));
     capMesh.setMatrixAt(i, m);
   });
   hydrantMesh.instanceMatrix.needsUpdate = true;
@@ -2430,7 +2474,7 @@ export function createGame(
   );
   dumpMesh.frustumCulled = false;
   dumps.forEach(([x, z], i) => {
-    m.compose(new THREE.Vector3(x, 0.58, z), qid, new THREE.Vector3(1, 1, 1));
+    m.compose(new THREE.Vector3(x, 0.58 + groundY(x, z), z), qid, new THREE.Vector3(1, 1, 1));
     dumpMesh.setMatrixAt(i, m);
   });
   dumpMesh.instanceMatrix.needsUpdate = true;
@@ -2443,7 +2487,7 @@ export function createGame(
   );
   benchMesh.frustumCulled = false;
   benches.forEach(([x, z], i) => {
-    m.compose(new THREE.Vector3(x, 0.38, z), qid, new THREE.Vector3(1, 1, 1));
+    m.compose(new THREE.Vector3(x, 0.38 + groundY(x, z), z), qid, new THREE.Vector3(1, 1, 1));
     benchMesh.setMatrixAt(i, m);
   });
   benchMesh.instanceMatrix.needsUpdate = true;
@@ -2455,7 +2499,7 @@ export function createGame(
     const cx = (b.minX + b.maxX) / 2;
     const cz = (b.minZ + b.maxZ) / 2;
     if (blockStyle(cx, cz, b.h, b.maxX - b.minX, b.maxZ - b.minZ) !== "brick" || b.h < 9) continue;
-    acs.push([b.minX - 0.25, 5.2 + (acs.length % 3) * 2.4, cz]);
+    acs.push([b.minX - 0.25, 5.2 + (acs.length % 3) * 2.4 + groundY(cx, cz), cz]);
   }
   const acMesh = new THREE.InstancedMesh(
     new THREE.BoxGeometry(0.42, 0.48, 0.7),
@@ -2541,7 +2585,7 @@ export function createGame(
     racks.length,
   );
   racks.forEach(([x, z], i) => {
-    m.compose(new THREE.Vector3(x, 0.48, z), qid, new THREE.Vector3(1, 1, 1));
+    m.compose(new THREE.Vector3(x, 0.48 + groundY(x, z), z), qid, new THREE.Vector3(1, 1, 1));
     rackMesh.setMatrixAt(i, m);
   });
   rackMesh.instanceMatrix.needsUpdate = true;
@@ -2552,8 +2596,10 @@ export function createGame(
   const crateMesh = new THREE.InstancedMesh(crateGeo, crateMat, 3);
   const crates = blocks.slice(-3);
   crates.forEach((b, i) => {
+    const cx = (b.minX + b.maxX) / 2;
+    const cz = (b.minZ + b.maxZ) / 2;
     m.compose(
-      new THREE.Vector3((b.minX + b.maxX) / 2, b.h / 2, (b.minZ + b.maxZ) / 2),
+      new THREE.Vector3(cx, b.h / 2 + groundY(cx, cz), cz),
       qid,
       new THREE.Vector3(b.maxX - b.minX, b.h, b.maxZ - b.minZ),
     );
@@ -2580,7 +2626,9 @@ export function createGame(
       new THREE.BoxGeometry(6.2, 2.3, 0.32),
       new THREE.MeshBasicMaterial({ map: tex }),
     );
-    mesh.position.set(b.maxX + 0.08, Math.min(b.h * 0.45, 14), (b.minZ + b.maxZ) / 2);
+    const sx = b.maxX + 0.08;
+    const sz = (b.minZ + b.maxZ) / 2;
+    mesh.position.set(sx, Math.min(b.h * 0.45, 14) + groundY(sx, sz), sz);
     mesh.rotation.y = Math.PI / 2;
     scene.add(mesh);
     signMeshes.push(mesh);
@@ -2589,21 +2637,21 @@ export function createGame(
     new THREE.BoxGeometry(7.2, 2.4, 0.32),
     new THREE.MeshBasicMaterial({ map: makeSign("AMBER", "#ffb020", "#1a1208") }),
   );
-  amberSign.position.set(-60, 7.2, 12);
+  amberSign.position.set(-60, 7.2 + groundY(-60, 12), 12);
   amberSign.rotation.y = -Math.PI / 2;
   scene.add(amberSign);
   const tealSign = new THREE.Mesh(
     new THREE.BoxGeometry(7.2, 2.4, 0.32),
     new THREE.MeshBasicMaterial({ map: makeSign("TEAL", "#3ee0c5", "#071412") }),
   );
-  tealSign.position.set(60, 7.2, 12);
+  tealSign.position.set(60, 7.2 + groundY(60, 12), 12);
   tealSign.rotation.y = Math.PI / 2;
   scene.add(tealSign);
   const lotSign = new THREE.Mesh(
     new THREE.PlaneGeometry(3.4, 1.3),
     new THREE.MeshBasicMaterial({ map: makeSign("LOT", "#ffb020", "#14120c") }),
   );
-  lotSign.position.set(LOT.x, 3.1, LOT.z + 0.7);
+  lotSign.position.set(LOT.x, 3.1 + groundY(LOT.x, LOT.z + 0.7), LOT.z + 0.7);
   scene.add(lotSign);
   const deedBoards: { id: string; mesh: THREE.Mesh }[] = [];
   const safeMeshes = new Map<string, THREE.Mesh>();
@@ -2611,7 +2659,8 @@ export function createGame(
   const postMesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.16, 0.28, 2.6, 6), postMat, spots.length);
   spots.forEach((s, i) => {
     const brand = BRAND[s.id] ?? { title: s.name, sub: "", fg: "#ffb020", bg: "#14120c", map: "#ffb020", code: "•" };
-    m.compose(new THREE.Vector3(s.x, 1.3, s.z), qid, new THREE.Vector3(1, 1, 1));
+    const spotY = groundY(s.x, s.z);
+    m.compose(new THREE.Vector3(s.x, 1.3 + spotY, s.z), qid, new THREE.Vector3(1, 1, 1));
     postMesh.setMatrixAt(i, m);
     postMesh.setColorAt(i, tint.set(brand.map));
     const lane = nearestRoad(s.x, s.z);
@@ -2623,7 +2672,7 @@ export function createGame(
         side: THREE.DoubleSide,
       }),
     );
-    board.position.set(s.x, 3.05, s.z);
+    board.position.set(s.x, 3.05 + spotY, s.z);
     board.rotation.y = face;
     scene.add(board);
     deedBoards.push({ id: s.id, mesh: board });
@@ -2632,7 +2681,7 @@ export function createGame(
       new THREE.BoxGeometry(4.9, 0.16, 1.55),
       new THREE.MeshStandardMaterial({ color: accent, roughness: 0.55, metalness: 0.08, emissive: accent, emissiveIntensity: 0.4 }),
     );
-    awning.position.set(s.x, 3.95, s.z);
+    awning.position.set(s.x, 3.95 + spotY, s.z);
     awning.rotation.y = face;
     scene.add(awning);
     const pad = new THREE.Mesh(
@@ -2640,7 +2689,7 @@ export function createGame(
       new THREE.MeshStandardMaterial({ color: accent, roughness: 0.82, emissive: accent, emissiveIntensity: 0.28 }),
     );
     pad.rotation.x = -Math.PI / 2;
-    pad.position.set(s.x, 0.22, s.z);
+    pad.position.set(s.x, 0.22 + spotY, s.z);
     scene.add(pad);
   });
   postMesh.instanceMatrix.needsUpdate = true;
@@ -2651,7 +2700,7 @@ export function createGame(
     const home = spots.find((s) => s.id === id);
     if (!home) continue;
     const safe = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.62, 0.5), safeMat);
-    safe.position.set(home.x + 1.35, 0.36, home.z + 0.4);
+    safe.position.set(home.x + 1.35, 0.36 + groundY(home.x + 1.35, home.z + 0.4), home.z + 0.4);
     safe.visible = false;
     scene.add(safe);
     safeMeshes.set(id, safe);
@@ -2661,7 +2710,7 @@ export function createGame(
     new THREE.BoxGeometry(2.1, 0.1, 1.15),
     new THREE.MeshStandardMaterial({ color: 0xb06adf, roughness: 0.45, emissive: 0xb06adf, emissiveIntensity: 0.45 }),
   );
-  inviteTable.position.set(suite ? suite.x : 69, 0.82, suite ? suite.z + 1.7 : 76.7);
+  inviteTable.position.set(suite ? suite.x : 69, 0.82 + groundY(suite ? suite.x : 69, suite ? suite.z + 1.7 : 76.7), suite ? suite.z + 1.7 : 76.7);
   inviteTable.visible = false;
   scene.add(inviteTable);
   refreshDeedSigns();
@@ -2670,7 +2719,7 @@ export function createGame(
     new THREE.BoxGeometry(1.4, 1.5, 0.9),
     new THREE.MeshStandardMaterial({ color: 0x1a140e, roughness: 0.72 }),
   );
-  kiosk.position.set(LOT.x, 0.75, LOT.z);
+  kiosk.position.set(LOT.x, 0.75 + groundY(LOT.x, LOT.z), LOT.z);
   scene.add(kiosk);
   const beacon = new THREE.Mesh(
     new THREE.CylinderGeometry(0.22, 0.22, 9, 8),
@@ -5104,13 +5153,13 @@ export function createGame(
       const fx = -Math.sin(yaw) * Math.cos(pitch);
       const fy = Math.sin(pitch);
       const fz = -Math.cos(yaw) * Math.cos(pitch);
-      return { x: car.x + fx * 0.6, y: 1.35, z: car.z + fz * 0.6, dx: fx, dy: fy, dz: fz, yaw };
+      return { x: car.x + fx * 0.6, y: 1.35 + groundY(car.x, car.z), z: car.z + fz * 0.6, dx: fx, dy: fy, dz: fz, yaw };
     }
     const pitch = camPitch;
     const fx = -Math.sin(camYaw) * Math.cos(pitch);
     const fy = Math.sin(pitch);
     const fz = -Math.cos(camYaw) * Math.cos(pitch);
-    return { x: px, y: 1.55, z: pz, dx: fx, dy: fy, dz: fz, yaw: camYaw };
+    return { x: px, y: 1.55 + groundY(px, pz), z: pz, dx: fx, dy: fy, dz: fz, yaw: camYaw };
   }
 
   function playerPos() {
@@ -5133,21 +5182,27 @@ export function createGame(
       const p = peds[i]!;
       if (!p.active || i === ignorePed || (p.state === "down" && p.hp <= 0)) continue;
       const prone = p.state === "down" && p.fall > 0.55;
-      take(rayCylinder(ox, oy, oz, dx, dy, dz, p.x, p.z, prone ? 0.75 : 0.42, prone ? 0.05 : 0.2, prone ? 0.45 : 1.75, maxT), "ped", i);
+      const foot = groundY(p.x, p.z);
+      take(rayCylinder(ox, oy, oz, dx, dy, dz, p.x, p.z, prone ? 0.75 : 0.42, (prone ? 0.05 : 0.2) + foot, (prone ? 0.45 : 1.75) + foot, maxT), "ped", i);
     }
     for (let i = 0; i < cars.length; i++) {
       if (i === ignoreCar || cars[i]!.hp <= 0) continue;
-      take(rayCylinder(ox, oy, oz, dx, dy, dz, cars[i]!.x, cars[i]!.z, 1.15, 0.25, 1.55, maxT), "car", i);
+      const foot = groundY(cars[i]!.x, cars[i]!.z);
+      take(rayCylinder(ox, oy, oz, dx, dy, dz, cars[i]!.x, cars[i]!.z, 1.15, 0.25 + foot, 1.55 + foot, maxT), "car", i);
     }
-    if (hitPlayer && alive && !driving) take(rayCylinder(ox, oy, oz, dx, dy, dz, px, pz, 0.42, 0.2, 1.8, maxT), "player", 0);
+    if (hitPlayer && alive && !driving) {
+      const foot = groundY(px, pz);
+      take(rayCylinder(ox, oy, oz, dx, dy, dz, px, pz, 0.42, 0.2 + foot, 1.8 + foot, maxT), "player", 0);
+    }
     return best;
   }
 
   function los(x: number, z: number, tx: number, tz: number) {
     const dx = tx - x;
+    const dy = groundY(tx, tz) - groundY(x, z);
     const dz = tz - z;
-    const len = Math.hypot(dx, dz) || 1;
-    const hit = trace(x, 1.2, z, dx / len, 0, dz / len, len, -1, -1, false);
+    const len = Math.hypot(dx, dy, dz) || 1;
+    const hit = trace(x, 1.2 + groundY(x, z), z, dx / len, dy / len, dz / len, len, -1, -1, false);
     return !hit || hit.kind !== "world" || hit.t > len - 0.4;
   }
 
@@ -5462,7 +5517,7 @@ export function createGame(
       const rz = -Math.sin(camYaw);
       const reach = aiming ? 0.78 : 0.55;
       e.x = px + e.dx * reach + rx * 0.24;
-      e.y = aiming ? 1.35 : 1.42;
+      e.y = (aiming ? 1.35 : 1.42) + groundY(px, pz);
       e.z = pz + e.dz * reach + rz * 0.24;
     }
     const pellets = force ? 1 : spec.pellets;
@@ -5518,8 +5573,9 @@ export function createGame(
   }
 
   function npcShoot(x: number, z: number, tx: number, ty: number, tz: number, spread: number, dmg: number, ignoreCar: number) {
+    const y0 = 1.2 + groundY(x, z);
     const dx0 = tx - x;
-    const dy0 = ty - 1.2;
+    const dy0 = ty + groundY(tx, tz) - y0;
     const dz0 = tz - z;
     const len = Math.hypot(dx0, dy0, dz0) || 1;
     let dx = dx0 / len;
@@ -5531,9 +5587,9 @@ export function createGame(
     dx = -Math.sin(yaw) * Math.cos(pitch);
     dy = Math.sin(pitch);
     dz = -Math.cos(yaw) * Math.cos(pitch);
-    const hit = trace(x, 1.2, z, dx, dy, dz, 40, ignoreCar, -1, true);
+    const hit = trace(x, y0, z, dx, dy, dz, 40, ignoreCar, -1, true);
     const dist = hit ? Math.min(hit.t, 24) : 12;
-    spawnShot(x, 1.2, z, dx, dy, dz, dist);
+    spawnShot(x, y0, z, dx, dy, dz, dist);
     if (Math.hypot(x - px, z - pz) < 34 || (driving && Math.hypot(x - cars[playerCar]!.x, z - cars[playerCar]!.z) < 34)) audio.shot("pistol");
     if (hit?.kind === "player") hurtPlayer(dmg);
     else if (hit?.kind === "ped") {
@@ -7121,7 +7177,8 @@ export function createGame(
       const rs = RIDES[car.ride].scale;
       const squat = dead ? 0.42 : car.hp < car.maxHp * 0.4 ? 0.82 : 1;
       q.setFromAxisAngle(up, car.yaw + Math.PI);
-      const hop = (dead ? 0.16 : 0.62) * rs[1] * squat;
+      const gyCar = groundY(car.x, car.z);
+      const hop = (dead ? 0.16 : 0.62) * rs[1] * squat + gyCar;
       if (!placed) {
         v.set(car.x, hop, car.z);
         scaleBody.set(rs[0], rs[1] * squat, rs[2]);
@@ -7180,7 +7237,7 @@ export function createGame(
           tailMesh.setMatrixAt(i * 2 + k, m);
         });
       }
-      v.set(car.x, 0.04, car.z);
+      v.set(car.x, 0.04 + gyCar, car.z);
       if (placed) {
         const len = car.ride === "van" ? 1.9 : car.ride === "sport" ? 1.55 : car.ride === "cruiser" ? 1.8 : 1.7;
         const wid = car.ride === "van" ? 1.4 : 1.28;
@@ -7191,7 +7248,7 @@ export function createGame(
       m.compose(v, q, dead ? scale0 : scaleBody);
       shadowMesh.setMatrixAt(i, m);
       const fleetSquat = dead ? 0.46 : car.hp < car.maxHp * 0.4 ? 0.82 : 1;
-      const barBase = placed ? placed.roof(car.body) * fleetSquat : hop;
+      const barBase = placed ? placed.roof(car.body) * fleetSquat + gyCar : hop;
       const barLift = placed ? 0.06 : 0.7 * rs[1];
       [-0.28, 0.28].forEach((xOff, k) => {
         v2.set(xOff, barLift, -0.15).applyQuaternion(q);
@@ -7231,7 +7288,7 @@ export function createGame(
           parkActor(actor);
           return;
         }
-        placeActor(actor, p.x, 0, p.z, p.yaw);
+        placeActor(actor, p.x, groundY(p.x, p.z), p.z, p.yaw);
         const close = dist < 36 || p.state === "down";
         if (!close && i % 3 !== animSlot) return;
         updateActor(
@@ -7269,7 +7326,7 @@ export function createGame(
           const aimPose = aiming && alive;
           const shownPace = alive ? clipPace(vx, vz, aimPose || shootPose > 0 ? camYaw : bodyYaw, aimPose || shootPose > 0) : 0;
           const bob = phase === "dead" || pace <= 0.4 || py > 0.05 ? 0 : Math.abs(Math.sin(elapsed * 9)) * 0.035;
-          placeActor(playerActor, px, bob + py, pz, bodyYaw);
+          placeActor(playerActor, px, groundY(px, pz) + bob + py, pz, bodyYaw);
           setHeldGun(playerActor, gun);
           updateActor(
             playerActor,
@@ -7327,7 +7384,7 @@ export function createGame(
         }
         const bob = lie > 0 ? 0 : Math.abs(Math.sin(p.bob)) * 0.05;
         const stride = lie > 0 ? 0 : Math.sin(p.bob);
-        const baseY = 0.92 * (1 - lie) + 0.16 * lie - crouch + bob;
+        const baseY = 0.92 * (1 - lie) + 0.16 * lie - crouch + bob + groundY(p.x, p.z);
         v.set(p.x, baseY, p.z);
         m.compose(v, q, scale1);
         pedBody.setMatrixAt(i, m);
@@ -7376,7 +7433,7 @@ export function createGame(
         const pace = Math.hypot(vx, vz);
         const bob = pace > 0.4 ? Math.abs(Math.sin(elapsed * 9)) * 0.035 : 0;
         const stepSwing = pace > 0.4 ? Math.sin(elapsed * (pace > 7 ? 12 : 8)) : 0;
-        playerGroup.position.set(px, bob + py, pz);
+        playerGroup.position.set(px, groundY(px, pz) + bob + py, pz);
         playerGroup.rotation.set(0, bodyYaw, 0);
         const pitch = camPitch;
         rightPivot.rotation.set(
@@ -7393,15 +7450,15 @@ export function createGame(
         gunRoot.rotation.set(-Math.PI / 2, 0, 0);
       }
     }
-    water.position.y = 0.9 + Math.sin(elapsed * 1.6) * 0.03;
+    water.position.y = plazaY + 0.9 + Math.sin(elapsed * 1.6) * 0.03;
     jet.scale.y = 0.85 + Math.sin(elapsed * 6) * 0.12;
-    jet.position.y = 1.55 + jet.scale.y * 0.15;
+    jet.position.y = plazaY + 1.55 + jet.scale.y * 0.15;
 
     pickupMesh.instanceMatrix.needsUpdate = true;
     pickups.forEach((p, i) => {
       const hide = p.wait > 0;
       q.setFromAxisAngle(up, elapsed * 1.4 + i);
-      v.set(p.x, hide ? -5 : 0.85 + Math.sin(elapsed * 3 + i) * 0.08, p.z);
+      v.set(p.x, hide ? -5 : groundY(p.x, p.z) + 0.85 + Math.sin(elapsed * 3 + i) * 0.08, p.z);
       m.compose(v, q, hide ? scale0 : scale1);
       pickupMesh.setMatrixAt(i, m);
     });
@@ -7431,7 +7488,7 @@ export function createGame(
       const ang = elapsed * 0.13;
       camera.position.set(Math.sin(ang) * 72, 38, Math.cos(ang) * 72);
       camHold.copy(camera.position);
-      camera.lookAt(0, 2, 0);
+      camera.lookAt(0, 2 + plazaY, 0);
       head.intensity = 0;
     } else {
       const looking = document.pointerLockElement === canvas || rightLook || gLook;
@@ -7444,8 +7501,8 @@ export function createGame(
       const rx = Math.cos(yaw);
       const rz = -Math.sin(yaw);
       const originX = driving ? car.x : px;
-      const originY = driving ? 1.2 : 1.5 + py;
       const originZ = driving ? car.z : pz;
+      const originY = (driving ? 1.2 : 1.5 + py) + groundY(originX, originZ);
       const dist = driving ? 11.6 : 4.35 - aimBlend * 1.35;
       const shoulder = driving ? 0.35 : 0.55 + aimBlend * 0.24;
       const lift = driving ? 2.15 : 0.42 + aimBlend * 0.16;
@@ -7479,8 +7536,9 @@ export function createGame(
       if (driving && car.hp > 0) {
         const nfx = -Math.sin(car.yaw);
         const nfz = -Math.cos(car.yaw);
-        head.position.set(car.x + nfx * 2.1, 0.9, car.z + nfz * 2.1);
-        head.target.position.set(car.x + nfx * 16, 0.4, car.z + nfz * 16);
+        const headY = groundY(car.x, car.z);
+        head.position.set(car.x + nfx * 2.1, 0.9 + headY, car.z + nfz * 2.1);
+        head.target.position.set(car.x + nfx * 16, 0.4 + headY, car.z + nfz * 16);
         head.intensity = 14;
       } else head.intensity = 0;
       if (driving && !looking) {
@@ -7488,7 +7546,7 @@ export function createGame(
         lookPitch += (-0.06 - lookPitch) * (1 - Math.exp(-2.4 * dtFrame));
       }
     }
-    water.position.y = 0.9 + Math.sin(elapsed * 2) * 0.04;
+    water.position.y = plazaY + 0.9 + Math.sin(elapsed * 2) * 0.04;
     water.rotation.z = elapsed * 0.35;
     const waterMat = water.material as THREE.MeshStandardMaterial;
     waterMat.emissiveIntensity = 0.55 + Math.sin(elapsed * 3.1) * 0.2;
@@ -7518,9 +7576,9 @@ export function createGame(
     canopy2.instanceMatrix.needsUpdate = true;
     treeSpots.forEach((t, i) => {
       const sway = Math.sin(elapsed * 0.7 + t.x * 0.07) * 0.22;
-      m.compose(new THREE.Vector3(t.x + sway, 2.55, t.z), qid, new THREE.Vector3(t.s, t.s, t.s));
+      m.compose(new THREE.Vector3(t.x + sway, 2.55 + t.y, t.z), qid, new THREE.Vector3(t.s, t.s, t.s));
       canopyMesh.setMatrixAt(i, m);
-      m.compose(new THREE.Vector3(t.x + 0.15 + sway * 1.3, 3.35, t.z - 0.1), qid, new THREE.Vector3(t.s * 0.85, t.s * 0.9, t.s * 0.85));
+      m.compose(new THREE.Vector3(t.x + 0.15 + sway * 1.3, 3.35 + t.y, t.z - 0.1), qid, new THREE.Vector3(t.s * 0.85, t.s * 0.9, t.s * 0.85));
       canopy2.setMatrixAt(i, m);
     });
 
@@ -7528,7 +7586,7 @@ export function createGame(
     vents.forEach((vent, i) => {
       const rise = (elapsed * 0.32 + i * 0.17) % 1;
       const s = 0.25 + rise * 1.15;
-      m.compose(new THREE.Vector3(vent.x, 0.35 + rise * 3.4, vent.z), qid, new THREE.Vector3(s, s * 1.5, s));
+      m.compose(new THREE.Vector3(vent.x, groundY(vent.x, vent.z) + 0.35 + rise * 3.4, vent.z), qid, new THREE.Vector3(s, s * 1.5, s));
       steamMesh.setMatrixAt(i, m);
     });
 
@@ -7556,7 +7614,8 @@ export function createGame(
       const x = ((((scrap.x + elapsed * (3.2 + (i % 3))) % WORLD) + WORLD) % WORLD) - HALF;
       const hop = Math.abs(Math.sin(elapsed * 3.4 + i)) * 0.45;
       q.setFromAxisAngle(axle, elapsed * 2.2 + i);
-      v.set(x, 0.12 + hop, scrap.z + Math.sin(elapsed * 0.8 + i) * 0.6);
+      const sz = scrap.z + Math.sin(elapsed * 0.8 + i) * 0.6;
+      v.set(x, groundY(x, sz) + 0.12 + hop, sz);
       scaleBody.set(scrap.s, scrap.s, scrap.s);
       m.compose(v, q, scaleBody);
       scrapMesh.setMatrixAt(i, m);
@@ -7575,11 +7634,15 @@ export function createGame(
     (nav.material as THREE.MeshBasicMaterial).color.setHex(Math.sin(elapsed * 7) > 0 ? 0xff3030 : 0x3a1010);
 
     beacon.visible = started && job.active && job.show;
-    beacon.position.set(job.bx, 5.2, job.bz);
+    beacon.position.set(job.bx, 5.2 + groundY(job.bx, job.bz), job.bz);
     beacon.rotation.y = elapsed;
     const showRing = beacon.visible && job.kind !== "shake" && !(job.kind === "deliver" && !job.flag);
     ring.visible = showRing;
-    if (showRing) ring.position.set(job.kind === "deliver" ? job.x : job.bx, 0.18, job.kind === "deliver" ? job.z : job.bz);
+    if (showRing) {
+      const rx = job.kind === "deliver" ? job.x : job.bx;
+      const rz = job.kind === "deliver" ? job.z : job.bz;
+      ring.position.set(rx, 0.18 + groundY(rx, rz), rz);
+    }
 
     const showHeli = started && wanted >= 5;
     beam.visible = showHeli;
@@ -7590,7 +7653,7 @@ export function createGame(
       heliX += (txh - heliX) * (1 - Math.exp(-2.4 * dtFrame));
       heliZ += (tzh - heliZ) * (1 - Math.exp(-2.4 * dtFrame));
       heliSpot.position.set(heliX, 34, heliZ);
-      heliSpot.target.position.set(heliX, 0.2, heliZ);
+      heliSpot.target.position.set(heliX, 0.2 + groundY(heliX, heliZ), heliZ);
       beam.position.set(heliX, 17, heliZ);
       const mat = beam.material as THREE.MeshBasicMaterial;
       mat.opacity = lit ? 0.06 : 0.025;
@@ -7605,7 +7668,7 @@ export function createGame(
       if (car.hp <= 0 || car.hp > car.maxHp * 0.72) continue;
       const rise = (elapsed * 0.7 + puff * 0.37) % 1;
       const s = 0.35 + rise * 1.3;
-      v.set(car.x + Math.sin(elapsed + puff) * 0.35, 1.1 + rise * 2.4, car.z + Math.cos(elapsed * 0.8 + puff) * 0.35);
+      v.set(car.x + Math.sin(elapsed + puff) * 0.35, groundY(car.x, car.z) + 1.1 + rise * 2.4, car.z + Math.cos(elapsed * 0.8 + puff) * 0.35);
       scaleBody.set(s, s, s);
       m.compose(v, qid, scaleBody);
       smokeMesh.setMatrixAt(puff, m);

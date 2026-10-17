@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import * as THREE from "three/webgpu";
-import { DISTRICT, districtLook, layoutDistrict, lotMasses, type BKind, type BlockBox, type Face, type Placement, type Spec } from "./city.ts";
+import { DISTRICT, districtLook, groundY, layoutDistrict, lotMasses, type BKind, type BlockBox, type Face, type Placement, type Spec } from "./city.ts";
 
 const specs: Record<BKind, Spec> = {
   large: { width: 20.64, depth: 16.64 },
@@ -150,5 +150,35 @@ describe("district layout", () => {
     assert.notEqual(west.tint, east.tint);
     assert.ok(west.height > 1);
     assert.ok(west.height > east.height);
+  });
+
+  it("lifts the lots off one plane and keeps the roads climbable", () => {
+    assert.equal(groundY(400, 400), 0);
+    assert.equal(groundY(-480, 30), 0);
+    assert.equal(groundY(30, 600), 0);
+    assert.ok(Math.abs(groundY(-6, 4)) < 0.4);
+    const samples: number[] = [];
+    for (let x = -120; x <= 120; x += 10) {
+      for (let z = -120; z <= 120; z += 10) samples.push(groundY(x, z));
+    }
+    const relief = Math.max(...samples) - Math.min(...samples);
+    assert.ok(relief > 5, `relief ${relief}`);
+    assert.ok(groundY(-100, 12) > groundY(-75, 0) + 0.35);
+    for (let z = -120; z < 120; z += 6) {
+      const step = Math.abs(groundY(-75, z) - groundY(-75, z + 6));
+      assert.ok(step < 0.55, `north road step ${step} at ${z}`);
+    }
+    for (let x = -120; x < 120; x += 6) {
+      const step = Math.abs(groundY(x, 25) - groundY(x + 6, 25));
+      assert.ok(step < 0.55, `east road step ${step} at ${x}`);
+    }
+    const faces = placed.filter((p) => p.face);
+    const ys = faces.map((p) => p.y);
+    assert.ok(Math.max(...ys) - Math.min(...ys) > 1);
+    const heights = faces.map((p) => p.sy / p.sx);
+    assert.ok(Math.max(...heights) - Math.min(...heights) > 0.05);
+    const street = placed.find((p) => p.kind === "street");
+    assert.ok(street);
+    assert.ok(Math.abs(street.y - (groundY(street.x, street.z) + 0.17)) < 1e-6);
   });
 });

@@ -1,11 +1,12 @@
 import * as THREE from "three/webgpu";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { groundY } from "./city.ts";
 
 /**
  * Cosmo CC0 low-poly cars. Smooth stylized bodies, same read as the downtown kit.
  * glTF nose is +Z. Game yaw 0 faces world −Z, so the mount adds PI, same sign as the box cars.
  * Wheel cylinders are thin on local X, so spin is rotation.x.
- * Lengths are about 5 m. Uniform scale keeps the tires on y = 0 after the ground shift.
+ * Lengths are about 5 m. Uniform scale keeps the tires on the street height.
  */
 
 export type FleetRide = "sport" | "sedan" | "van" | "cruiser";
@@ -154,7 +155,7 @@ export async function loadFleet(scene: THREE.Scene, count: number, qualityHigh: 
         const dead = car.hp <= 0;
         const squat = dead ? 0.46 : car.hp < car.maxHp * 0.4 ? 0.82 : 1;
         slot.root.visible = true;
-        slot.root.position.set(car.x, 0, car.z);
+        slot.root.position.set(car.x, groundY(car.x, car.z), car.z);
         slot.root.quaternion.copy(driveQuaternion(car.yaw, q));
         slot.root.scale.set(slot.base, slot.base * squat, slot.base);
         for (const wheel of slot.wheels) wheel.rotation.x = car.spin;
